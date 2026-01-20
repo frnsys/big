@@ -2,17 +2,24 @@ use egui::{
     Color32, FontId, Id, LayerId, Order, Painter, PointerButton, Pos2, Rangef, Rect, Response,
     Sense, Stroke, StrokeKind, UiBuilder, Vec2, ahash::HashSet, emath::TSTransform,
 };
+pub use egui_phosphor::regular as icons;
 
 struct App {
     transform: TSTransform,
     objects: Vec<Object>,
-    selected: HashSet<usize>,
+    selected: Selection,
+    tool: Tool,
 }
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        let mut fonts = egui::FontDefinitions::default();
+        egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+        cc.egui_ctx.set_fonts(fonts);
+
         Self {
+            tool: Tool::Moving,
             transform: TSTransform::default(),
-            selected: HashSet::default(),
+            selected: Selection::default(),
             objects: vec![
                 Object {
                     transform: TSTransform::default(),
@@ -47,12 +54,12 @@ impl App {
     }
 }
 
-enum InteractMode {
+enum Tool {
     Moving,
     Typing,
-    Selecting,
-    Drawing,
+    BoxSelect(Option<(Pos2, Pos2)>),
     Placing,
+    Bookmark,
 }
 
 struct Object {
@@ -91,12 +98,55 @@ impl ObjectKind {
     }
 }
 
+#[derive(Default)]
+struct Selection {
+    ids: HashSet<usize>,
+}
+impl Selection {
+    fn replace(&mut self, ids: &[usize]) {
+        self.ids.clear();
+        self.ids.extend(ids);
+    }
+
+    fn append(&mut self, ids: &[usize]) {
+        self.ids.extend(ids);
+    }
+
+    fn remove(&mut self, id: usize) {
+        self.ids.remove(&id);
+    }
+
+    fn clear(&mut self) {
+        self.ids.clear();
+    }
+
+    fn contains(&self, id: usize) -> bool {
+        self.ids.contains(&id)
+    }
+
+    fn toggle(&mut self, id: usize, append: bool) {
+        if self.ids.contains(&id) {
+            if !append {
+                self.ids.clear();
+            }
+            self.ids.remove(&id);
+        } else {
+            if !append {
+                self.replace(&[id]);
+            } else {
+                self.append(&[id]);
+            }
+        }
+    }
+}
+
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // For canvas interaction (zooming & panning).
         egui::CentralPanel::default().show(ctx, |ui| {
             let mut resp = create_surface(ui);
-            update_transform(ui, &mut self.transform, &mut resp);
+            let allow_drag = !matches!(self.tool, Tool::BoxSelect(_));
+            update_transform(ui, &mut self.transform, &mut resp, allow_drag);
         });
 
         let clicked = ctx.input(|inp| inp.pointer.primary_clicked());
@@ -105,6 +155,8 @@ impl eframe::App for App {
         } else {
             None
         };
+
+        let mut rects = Vec::with_capacity(self.objects.len());
         let shift_pressed = ctx.input(|inp| inp.modifiers.shift_only());
         let mut selection_rect: Option<Rect> = None;
         for (i, obj) in self.objects.iter_mut().enumerate() {
@@ -121,29 +173,23 @@ impl eframe::App for App {
             if let Some(pos) = interact_pos
                 && rect.contains(trans.inverse().mul_pos(pos))
             {
-                if self.selected.contains(&i) {
-                    if !shift_pressed {
-                        self.selected.clear();
-                        selection_rect = None;
-                    }
-                    self.selected.remove(&i);
-                } else {
-                    if !shift_pressed {
-                        self.selected.clear();
-                        selection_rect = None;
-                    }
-                    self.selected.insert(i);
+                if !shift_pressed {
+                    selection_rect = None;
                 }
+                self.selected.toggle(i, shift_pressed);
             }
 
-            if self.selected.contains(&i) {
-                let rect =
-                    Rect::from_min_size(trans.translation.to_pos2(), rect.size() * trans.scaling);
+            let rect =
+                Rect::from_min_size(trans.translation.to_pos2(), rect.size() * trans.scaling);
+
+            if self.selected.contains(i) {
                 selection_rect = match selection_rect {
                     Some(base) => Some(base.union(rect)),
                     None => Some(rect),
                 };
             }
+
+            rects.push(rect);
         }
 
         if let Some(rect) = selection_rect {
@@ -151,7 +197,134 @@ impl eframe::App for App {
             let painter = ctx.layer_painter(layer);
             painter.rect_stroke(rect, 0., Stroke::new(2., Color32::RED), StrokeKind::Outside);
         }
+
+        // TODO tool visual feedback
+        match &self.tool {
+            Tool::Moving => {
+                // TODO
+            }
+            Tool::Typing => todo!(),
+            Tool::BoxSelect(rect) => {
+                if let Some((start, end)) = rect {
+                    let layer = LayerId::new(Order::Foreground, Id::new("selection-box"));
+                    let painter = ctx.layer_painter(layer);
+                    painter.rect_stroke(
+                        Rect::from_two_pos(*start, *end),
+                        0.,
+                        Stroke::new(2., Color32::RED),
+                        StrokeKind::Outside,
+                    );
+                }
+            }
+            Tool::Placing => todo!(),
+            Tool::Bookmark => todo!(),
+        }
+
+        // tool interaction
+        match &mut self.tool {
+            Tool::Moving => {
+                // TODO
+            }
+            Tool::Typing => todo!(),
+            Tool::BoxSelect(rect) => {
+                ctx.input(|inp| {
+                    if inp.pointer.primary_pressed()
+                        && let Some(pos) = inp.pointer.press_origin()
+                    {
+                        *rect = Some((pos, pos))
+                    }
+
+                    if let Some((_, end)) = rect {
+                        if inp.pointer.primary_down()
+                            && let Some(pos) = inp.pointer.latest_pos()
+                        {
+                            *end = pos;
+                        }
+                    }
+
+                    if inp.pointer.primary_released()
+                        && let Some((start, end)) = rect
+                    {
+                        let r = Rect::from_two_pos(*start, *end);
+                        let ids: Vec<_> = rects
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, rect)| rect.intersects(r))
+                            .map(|(i, _)| i)
+                            .collect();
+                        if shift_pressed {
+                            self.selected.append(&ids);
+                        } else {
+                            self.selected.replace(&ids);
+                        }
+                        *rect = None;
+                    }
+                });
+            }
+            Tool::Placing => todo!(),
+            Tool::Bookmark => todo!(),
+        }
+
+        egui::Area::new(egui::Id::new("tools"))
+            .fixed_pos(egui::pos2(32.0, 32.0))
+            .order(Order::Foreground)
+            .show(ctx, |ui| {
+                select_button(
+                    ui,
+                    icons::CURSOR,
+                    &mut self.tool,
+                    |mode| matches!(mode, Tool::Moving),
+                    || Tool::Moving,
+                )
+                .on_hover_text("Move");
+                select_button(
+                    ui,
+                    icons::IMAGES,
+                    &mut self.tool,
+                    |mode| matches!(mode, Tool::Placing),
+                    || Tool::Placing,
+                )
+                .on_hover_text("Place Images");
+                select_button(
+                    ui,
+                    icons::SELECTION,
+                    &mut self.tool,
+                    |mode| matches!(mode, Tool::BoxSelect(_)),
+                    || Tool::BoxSelect(None),
+                )
+                .on_hover_text("Selection");
+                select_button(
+                    ui,
+                    icons::CURSOR_TEXT,
+                    &mut self.tool,
+                    |mode| matches!(mode, Tool::Typing),
+                    || Tool::Typing,
+                )
+                .on_hover_text("Insert Text");
+                select_button(
+                    ui,
+                    icons::BOOKMARK_SIMPLE,
+                    &mut self.tool,
+                    |mode| matches!(mode, Tool::Bookmark),
+                    || Tool::Bookmark,
+                )
+                .on_hover_text("Add Bookmark");
+            });
     }
+}
+
+fn select_button<T>(
+    ui: &mut egui::Ui,
+    text: &str,
+    val: &mut T,
+    pred: impl FnOnce(&T) -> bool,
+    default: impl FnOnce() -> T,
+) -> Response {
+    let resp = ui.selectable_label(pred(val), text);
+    if resp.clicked() {
+        *val = default();
+    }
+    resp
 }
 
 fn create_surface(ui: &mut egui::Ui) -> Response {
@@ -166,9 +339,14 @@ fn create_surface(ui: &mut egui::Ui) -> Response {
     local_ui.response()
 }
 
-fn update_transform(ui: &mut egui::Ui, transform: &mut TSTransform, drag_resp: &mut Response) {
+fn update_transform(
+    ui: &mut egui::Ui,
+    transform: &mut TSTransform,
+    drag_resp: &mut Response,
+    allow_drag: bool,
+) {
     let dragged = drag_resp.dragged_by(PointerButton::Primary);
-    if dragged {
+    if allow_drag && dragged {
         transform.translation += drag_resp.drag_delta();
         drag_resp.mark_changed();
     }

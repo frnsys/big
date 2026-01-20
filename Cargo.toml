@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 eframe = { version = "0.33.3", default-features = false, features = ["glow", "wayland"] }
 egui = "0.33.3"
+egui-phosphor = "0.11.0"
