@@ -78,7 +78,7 @@ impl Tool {
             }
             Tool::BoxSelect(rect) => {
                 if let Some((start, end)) = rect {
-                    let layer = LayerId::new(Order::Foreground, Id::new("selection-box"));
+                    let layer = LayerId::new(Order::Background, Id::new("selection-box"));
                     let painter = ctx.layer_painter(layer);
                     painter.rect_stroke(
                         Rect::from_two_pos(*start, *end),
@@ -268,7 +268,7 @@ impl Tool {
 pub fn toolbar(ctx: &Context, tool: &mut Tool) {
     egui::Area::new(egui::Id::new("tools"))
         .fixed_pos(egui::pos2(32.0, 32.0))
-        .order(Order::Foreground)
+        .order(Order::Middle)
         .show(ctx, |ui| {
             select_button(
                 ui,

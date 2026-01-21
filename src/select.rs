@@ -131,7 +131,7 @@ impl SelectionState {
     }
 
     fn render_selection_box(&mut self, ctx: &Context, rect: Rect, objects: &State) {
-        let layer = LayerId::new(Order::Foreground, Id::new("selection"));
+        let layer = LayerId::new(Order::Background, Id::new("selection"));
         let painter = ctx.layer_painter(layer);
         painter.rect_stroke(rect, 0., Stroke::new(2., Color32::RED), StrokeKind::Outside);
 

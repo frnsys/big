@@ -105,7 +105,7 @@ impl App {
                 (obj.transform.translation * self.transform.scaling) + self.transform.translation;
 
             let rect = if !dont_render {
-                let layer = LayerId::new(obj.data.order(), Id::new(i));
+                let layer = LayerId::new(Order::Background, Id::new(i));
                 ctx.set_transform_layer(layer, trans);
                 let mut painter = ctx.layer_painter(layer);
                 obj.data.paint(&mut painter)
@@ -211,7 +211,7 @@ impl eframe::App for App {
         self.notifications.show(ctx);
 
         egui::Area::new(egui::Id::new("inspector"))
-            .order(Order::Tooltip)
+            .order(Order::Middle)
             .anchor(Align2::RIGHT_TOP, Vec2::new(-8., 8.))
             .show(ctx, |ui| {
                 egui::Frame::NONE

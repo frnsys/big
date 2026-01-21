@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use egui::{Color32, FontId, Order, Painter, Pos2, Rect, Vec2, emath::TSTransform};
+use egui::{Color32, FontId, Painter, Pos2, Rect, Vec2, emath::TSTransform};
 
 use crate::images::TextureCache;
 
@@ -51,13 +51,6 @@ impl ObjectKind {
                     Rect::ZERO
                 }
             }
-        }
-    }
-
-    pub fn order(&self) -> Order {
-        match self {
-            ObjectKind::Rect { .. } | ObjectKind::Image { .. } => Order::Background,
-            ObjectKind::Text { .. } => Order::Middle,
         }
     }
 }
