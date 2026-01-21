@@ -31,7 +31,33 @@ pub enum Tool {
 }
 
 impl Tool {
-    pub fn visualize(&mut self, ctx: &Context, global_trans: TSTransform, objects: &mut State) {
+    pub fn allow_selection(&self) -> bool {
+        matches!(self, Tool::Moving)
+    }
+}
+
+impl Tool {
+    pub fn update(
+        &mut self,
+        ctx: &Context,
+        surface_clicked: bool,
+        global_trans: TSTransform,
+        objects: &mut State,
+        selection: &mut SelectionState,
+        rects: &[(Uuid, Rect)],
+    ) -> bool {
+        self.visualize(ctx, global_trans, objects);
+        self.interact(
+            ctx,
+            surface_clicked,
+            global_trans,
+            objects,
+            selection,
+            rects,
+        )
+    }
+
+    fn visualize(&mut self, ctx: &Context, global_trans: TSTransform, objects: &mut State) {
         match self {
             Tool::Moving => (),
             Tool::Typing {
@@ -94,7 +120,7 @@ impl Tool {
 
     // TODO reduce the args here?
     /// Return `true` when a change was made
-    pub fn interact(
+    fn interact(
         &mut self,
         ctx: &Context,
         surface_clicked: bool,
@@ -102,7 +128,6 @@ impl Tool {
         objects: &mut State,
         selection: &mut SelectionState,
         rects: &[(Uuid, Rect)],
-        shift_pressed: bool,
     ) -> bool {
         let mut changed = false;
         match self {
@@ -211,9 +236,11 @@ impl Tool {
                         let r = Rect::from_two_pos(*start, *end);
                         let ids: Vec<_> = rects
                             .iter()
-                            .filter(|(_, rect)| rect.intersects(r))
+                            .filter(|(_, rect)| r.contains_rect(*rect))
                             .map(|(i, _)| *i)
                             .collect();
+
+                        let shift_pressed = inp.modifiers.shift_only();
                         if shift_pressed {
                             selection.append(&ids);
                         } else {

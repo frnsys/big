@@ -27,14 +27,13 @@ use crate::{
 };
 
 struct App {
-    transform: TSTransform,
-    objects: BTreeMap<Uuid, Object>,
-    selection: SelectionState,
     tool: Tool,
     stack: Stack,
-    is_dirty: bool,
-    notifications: Notifications,
+    transform: TSTransform,
+    selection: SelectionState,
     bookmarks: Vec<Bookmark>,
+    objects: BTreeMap<Uuid, Object>,
+    notifications: Notifications,
 }
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -85,7 +84,6 @@ impl App {
         .into();
 
         Self {
-            is_dirty: false,
             tool: Tool::Moving,
             transform: TSTransform::default(),
             selection: SelectionState::default(),
@@ -123,13 +121,15 @@ impl App {
         rects
     }
 
-    fn handle_input(&mut self, ctx: &Context) {
+    fn handle_input(&mut self, ctx: &Context) -> bool {
+        let mut changed = false;
+
         if ctx.input(|inp| inp.key_released(Key::X)) {
             for id in self.selection.iter() {
                 self.objects.remove(id);
             }
             self.selection.clear();
-            self.is_dirty = true;
+            changed = true;
         }
 
         if ctx.input(|inp| inp.key_released(Key::Z)) {
@@ -149,17 +149,19 @@ impl App {
             self.notifications.push("Saved".into());
             std::fs::write("/tmp/plan.yaml", ser).expect("Unable to write file");
         }
-    }
-}
 
-enum Inspector {
-    Bookmarks,
+        changed
+    }
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let mut is_dirty = false;
+
         TextureCache::update(ctx);
 
+        // Kind of hacky, but if we're editing a label we don't want
+        // to both render the input and the text object at the same time.
         let skip_id = if let Tool::Typing { id, .. } = &self.tool {
             *id
         } else {
@@ -168,69 +170,35 @@ impl eframe::App for App {
 
         let rects = self.render_objects(ctx, skip_id);
 
-        let clicked = ctx.input(|inp| inp.pointer.primary_clicked());
-        let interact_pos = if clicked {
-            ctx.input(|inp| inp.pointer.interact_pos())
-        } else {
-            None
-        };
-
-        let allow_select = !matches!(self.tool, Tool::Typing { .. });
-        let shift_pressed = ctx.input(|inp| inp.modifiers.shift_only());
-
-        let mut selection_rect: Option<Rect> = None;
-        if clicked
-            && allow_select
-            && let Some(pos) = interact_pos
-        {
-            for (id, rect) in &rects {
-                if rect.contains(pos) {
-                    if !shift_pressed {
-                        selection_rect = None;
-                    }
-                    self.selection.toggle(*id, shift_pressed);
-                }
-            }
-        }
-
-        for (id, rect) in &rects {
-            if self.selection.contains(*id) {
-                selection_rect = match selection_rect {
-                    Some(base) => Some(base.union(*rect)),
-                    None => Some(*rect),
-                };
-            }
-        }
-
         // For canvas interaction (zooming & panning).
-        let mut surface_clicked = false;
         egui::CentralPanel::default().show(ctx, |ui| {
             let mut resp = create_surface(ui);
-            surface_clicked = resp.clicked();
+            let surface_clicked = resp.clicked();
             let allow_drag =
                 !matches!(self.tool, Tool::BoxSelect(_)) && !self.selection.is_dragging();
             update_transform(ui, &mut self.transform, &mut resp, allow_drag);
 
-            // Note for drags we only mark the state dirty after releasing the pointer
-            if let Some(rect) = selection_rect {
-                let dragged = resp.dragged_by(PointerButton::Primary);
-                let delta = dragged.then_some(resp.drag_delta());
-                self.is_dirty |=
-                    self.selection
-                        .update(ctx, rect, delta, &mut self.objects, self.transform);
-            }
-        });
+            let dragged = resp.dragged_by(PointerButton::Primary);
+            let delta = dragged.then_some(resp.drag_delta());
+            let allow_select = self.tool.allow_selection();
+            is_dirty |= self.selection.update(
+                ctx,
+                &rects,
+                delta,
+                &mut self.objects,
+                self.transform,
+                allow_select,
+            );
 
-        self.tool.visualize(ctx, self.transform, &mut self.objects);
-        self.is_dirty |= self.tool.interact(
-            ctx,
-            surface_clicked,
-            self.transform,
-            &mut self.objects,
-            &mut self.selection,
-            &rects,
-            shift_pressed,
-        );
+            is_dirty |= self.tool.update(
+                ctx,
+                surface_clicked,
+                self.transform,
+                &mut self.objects,
+                &mut self.selection,
+                &rects,
+            );
+        });
 
         if !ctx.memory(|mem| mem.focused().is_some()) {
             self.handle_input(ctx);
@@ -254,11 +222,10 @@ impl eframe::App for App {
 
         toolbar(ctx, &mut self.tool);
 
-        if self.is_dirty {
+        if is_dirty {
             if *self.stack.current() != self.objects {
                 self.stack.push(self.objects.clone());
             }
-            self.is_dirty = false;
         }
     }
 }

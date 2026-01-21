@@ -43,7 +43,7 @@ impl Selection {
         self.ids.contains(&id)
     }
 
-    pub fn toggle(&mut self, id: Uuid, append: bool) {
+    fn toggle(&mut self, id: Uuid, append: bool) {
         if self.ids.contains(&id) {
             if !append {
                 self.ids.clear();
@@ -85,13 +85,43 @@ impl SelectionState {
     pub fn update(
         &mut self,
         ctx: &Context,
-        rect: Rect,
+        rects: &[(Uuid, Rect)],
         drag_delta: Option<Vec2>,
         objects: &mut State,
         global_transform: TSTransform,
+        allow_select: bool,
     ) -> bool {
-        self.render_selection_box(ctx, rect, objects);
-        self.handle_drag(ctx, rect, drag_delta, objects, global_transform)
+        let clicked = ctx.input(|inp| inp.pointer.primary_clicked());
+        let interact_pos = ctx.input(|inp| inp.pointer.interact_pos());
+        let shift_pressed = ctx.input(|inp| inp.modifiers.shift_only());
+
+        if clicked
+            && allow_select
+            && let Some(pos) = interact_pos
+        {
+            for (id, rect) in rects {
+                if rect.contains(pos) {
+                    self.selection.toggle(*id, shift_pressed);
+                }
+            }
+        }
+
+        let mut selection_rect: Option<Rect> = None;
+        for (id, rect) in rects {
+            if self.selection.contains(*id) {
+                selection_rect = match selection_rect {
+                    Some(base) => Some(base.union(*rect)),
+                    None => Some(*rect),
+                };
+            }
+        }
+
+        if let Some(rect) = selection_rect {
+            self.render_selection_box(ctx, rect, objects);
+            self.handle_drag(ctx, rect, drag_delta, objects, global_transform)
+        } else {
+            false
+        }
     }
 
     fn render_selection_box(&mut self, ctx: &Context, rect: Rect, objects: &State) {
