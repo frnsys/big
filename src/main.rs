@@ -144,6 +144,10 @@ impl App {
             }
         }
 
+        if ctx.input(|inp| inp.key_released(Key::Escape)) {
+            self.tool = Tool::Moving;
+        }
+
         if ctx.input(|inp| inp.key_released(Key::S) && inp.modifiers.ctrl) {
             let ser = serde_yaml::to_string(&self.objects).unwrap();
             self.notifications.push("Saved".into());
