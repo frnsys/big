@@ -68,6 +68,7 @@ enum Tool {
     Typing {
         transform: Option<TSTransform>,
         string: String,
+        width: f32,
         id: Option<usize>,
     },
     BoxSelect(Option<(Pos2, Pos2)>),
@@ -174,16 +175,29 @@ impl eframe::App for App {
         let shift_pressed = ctx.input(|inp| inp.modifiers.shift_only());
         let mut selection_rect: Option<Rect> = None;
         let mut clicked = vec![];
+
+        let skip_id = if let Tool::Typing { id, .. } = &self.tool {
+            *id
+        } else {
+            None
+        };
+
         for (i, obj) in self.objects.iter_mut().enumerate() {
+            let skip = skip_id.is_some_and(|id| id == i);
+
             let mut trans = obj.transform;
             trans.scaling *= self.transform.scaling;
             trans.translation =
                 (obj.transform.translation * self.transform.scaling) + self.transform.translation;
 
-            let layer = LayerId::new(obj.data.order(), Id::new(i));
-            ctx.set_transform_layer(layer, trans);
-            let painter = ctx.layer_painter(layer);
-            let rect = obj.data.paint(&painter);
+            let rect = if !skip {
+                let layer = LayerId::new(obj.data.order(), Id::new(i));
+                ctx.set_transform_layer(layer, trans);
+                let painter = ctx.layer_painter(layer);
+                obj.data.paint(&painter)
+            } else {
+                Rect::ZERO
+            };
 
             if let Some(pos) = interact_pos
                 && rect.contains(trans.inverse().mul_pos(pos))
@@ -286,7 +300,10 @@ impl eframe::App for App {
         match &mut self.tool {
             Tool::Moving => (),
             Tool::Typing {
-                transform, string, ..
+                transform,
+                string,
+                width,
+                ..
             } => {
                 if let Some(trans) = transform {
                     let mut trans = *trans;
@@ -311,7 +328,7 @@ impl eframe::App for App {
                                 const FONT: FontId = FontId::proportional(12.);
                                 let resp = ui.add(
                                     egui::TextEdit::multiline(string)
-                                        .desired_width(200.)
+                                        .desired_width(*width)
                                         .margin(0.)
                                         .frame(false)
                                         .font(FONT)
@@ -344,6 +361,7 @@ impl eframe::App for App {
             Tool::Typing {
                 transform,
                 string,
+                width,
                 id,
             } => {
                 ctx.input(|inp| {
@@ -359,10 +377,16 @@ impl eframe::App for App {
                         if let Some(i) = existing {
                             *id = Some(i);
                             let obj = &self.objects[i];
-                            if let ObjectKind::Text { text, width, color } = &obj.data {
+                            if let ObjectKind::Text {
+                                text,
+                                width: w,
+                                color,
+                            } = &obj.data
+                            {
                                 *transform = Some(obj.transform);
                                 string.clear();
                                 string.push_str(&text);
+                                *width = *w;
                             }
                         } else {
                             *transform = Some(TSTransform {
@@ -384,23 +408,24 @@ impl eframe::App for App {
                                     if !modifiers.shift {
                                         if let Some(i) = id {
                                             let obj = &mut self.objects[*i];
-                                            if let ObjectKind::Text { text, width, color } =
-                                                &mut obj.data
-                                            {
+                                            if let ObjectKind::Text { text, .. } = &mut obj.data {
                                                 *text = string.take();
                                             }
                                         } else {
-                                            self.objects.push(Object {
-                                                transform: trans,
-                                                data: ObjectKind::Text {
-                                                    text: string.take(),
-                                                    width: 200.,
-                                                    color: Color32::LIGHT_BLUE,
-                                                },
-                                            });
+                                            if !string.trim().is_empty() {
+                                                self.objects.push(Object {
+                                                    transform: trans,
+                                                    data: ObjectKind::Text {
+                                                        text: string.take(),
+                                                        width: *width,
+                                                        color: Color32::LIGHT_BLUE,
+                                                    },
+                                                });
+                                            }
                                         }
                                         *transform = None;
                                         string.clear();
+                                        *id = None;
                                     }
                                 }
                                 _ => {}
@@ -484,6 +509,7 @@ impl eframe::App for App {
                     || Tool::Typing {
                         transform: None,
                         string: String::new(),
+                        width: 180.,
                         id: None,
                     },
                 )
