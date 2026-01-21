@@ -10,6 +10,7 @@ struct App {
     objects: Vec<Object>,
     selected: Selection,
     tool: Tool,
+    dragging_objs: bool,
 }
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -19,6 +20,7 @@ impl App {
 
         Self {
             tool: Tool::Moving,
+            dragging_objs: false,
             transform: TSTransform::default(),
             selected: Selection::default(),
             objects: vec![
@@ -101,6 +103,13 @@ impl ObjectKind {
             }
         }
     }
+
+    fn order(&self) -> Order {
+        match self {
+            ObjectKind::Rect { .. } => Order::Middle,
+            ObjectKind::Text { .. } => Order::Foreground,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -147,13 +156,6 @@ impl Selection {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // For canvas interaction (zooming & panning).
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let mut resp = create_surface(ui);
-            let allow_drag = !matches!(self.tool, Tool::BoxSelect(_));
-            update_transform(ui, &mut self.transform, &mut resp, allow_drag);
-        });
-
         let clicked = ctx.input(|inp| inp.pointer.primary_clicked());
         let interact_pos = if clicked {
             ctx.input(|inp| inp.pointer.interact_pos())
@@ -172,7 +174,7 @@ impl eframe::App for App {
             trans.translation =
                 (obj.transform.translation * self.transform.scaling) + self.transform.translation;
 
-            let layer = LayerId::new(Order::Middle, Id::new(i));
+            let layer = LayerId::new(obj.data.order(), Id::new(i));
             ctx.set_transform_layer(layer, trans);
             let painter = ctx.layer_painter(layer);
             let rect = obj.data.paint(&painter);
@@ -201,6 +203,42 @@ impl eframe::App for App {
 
             rects.push(rect);
         }
+
+        if !self.dragging_objs {
+            let interact_pos = ctx.input(|inp| inp.pointer.interact_pos());
+            let pointer_down = ctx.input(|inp| inp.pointer.primary_pressed());
+            let selection_box_clicked = interact_pos
+                .zip(selection_rect)
+                .map(|(pos, rect)| rect.contains(pos) && pointer_down)
+                .unwrap_or(false);
+            self.dragging_objs = selection_box_clicked;
+        } else {
+            let pointer_up = ctx.input(|inp| inp.pointer.primary_released());
+            if pointer_up {
+                self.dragging_objs = false;
+            }
+        }
+
+        // For canvas interaction (zooming & panning).
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let mut resp = create_surface(ui);
+            let allow_drag = !matches!(self.tool, Tool::BoxSelect(_)) && !self.dragging_objs;
+            update_transform(ui, &mut self.transform, &mut resp, allow_drag);
+
+            if self.dragging_objs {
+                let dragged = resp.dragged_by(PointerButton::Primary);
+                if dragged {
+                    for i in self.selected.ids.iter() {
+                        self.objects[*i].transform.translation += resp.drag_delta();
+                        // self.objects[*i].transform.translation = self
+                        //     .transform
+                        //     .inverse()
+                        //     .mul_pos(interact_pos.unwrap())
+                        //     .to_vec2();
+                    }
+                }
+            }
+        });
 
         if let Some(rect) = selection_rect {
             let layer = LayerId::new(Order::Foreground, Id::new("selection"));
