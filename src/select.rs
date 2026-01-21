@@ -95,6 +95,7 @@ impl SelectionState {
         let interact_pos = ctx.input(|inp| inp.pointer.interact_pos());
         let shift_pressed = ctx.input(|inp| inp.modifiers.shift_only());
 
+        let mut nothing_clicked = true;
         if clicked
             && allow_select
             && let Some(pos) = interact_pos
@@ -102,8 +103,13 @@ impl SelectionState {
             for (id, rect) in rects {
                 if rect.contains(pos) {
                     self.selection.toggle(*id, shift_pressed);
+                    nothing_clicked = false;
                 }
             }
+        }
+
+        if clicked && nothing_clicked {
+            self.selection.clear();
         }
 
         let mut selection_rect: Option<Rect> = None;
