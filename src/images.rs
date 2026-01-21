@@ -18,6 +18,9 @@ static TEXTURE_CACHE: LazyLock<Mutex<TextureCache>> = LazyLock::new(|| {
 pub struct TextureInfo {
     pub id: TextureId,
     pub size: Vec2,
+
+    // Hold on to a reference
+    #[allow(unused)]
     pub handle: TextureHandle,
 }
 
