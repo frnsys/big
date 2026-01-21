@@ -18,11 +18,39 @@ use stack::Stack;
 use tools::{Tool, toolbar};
 
 use crate::{
-    bookmarks::{Bookmark, render_bookmarks_panel},
+    bookmarks::{Bookmark, BookmarksPanel},
     objects::{Object, ObjectKind},
     select::SelectionState,
     stack::State,
 };
+
+fn replace_fonts(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    let font_name = "default";
+
+    fonts.font_data.insert(
+        font_name.to_owned(),
+        // std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
+        //     "../assets/DMMono/DMMono-Regular.ttf"
+        // ))),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
+            "../assets/Inter/Inter-Regular.ttf"
+        ))),
+    );
+    fonts.font_data.insert(
+        "phosphor".into(),
+        egui_phosphor::Variant::Regular.font_data().into(),
+    );
+
+    fonts.families.insert(
+        egui::FontFamily::Proportional,
+        vec![font_name.into(), "phosphor".into()],
+    );
+
+    egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+
+    ctx.set_fonts(fonts);
+}
 
 struct App {
     tool: Tool,
@@ -30,15 +58,29 @@ struct App {
     transform: TSTransform,
     selection: SelectionState,
     bookmarks: Vec<Bookmark>,
+    bookmarks_panel: BookmarksPanel,
     objects: State,
     notifications: Notifications,
 }
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let mut fonts = egui::FontDefinitions::default();
-        egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
-        cc.egui_ctx.set_fonts(fonts);
+        replace_fonts(&cc.egui_ctx);
         egui_extras::install_image_loaders(&cc.egui_ctx);
+
+        cc.egui_ctx.style_mut(|style| {
+            // Affects tooltips
+            style.visuals.popup_shadow = egui::Shadow::NONE;
+            style.visuals.menu_corner_radius = 1.0.into();
+            style.visuals.window_stroke = egui::Stroke::NONE;
+            style.visuals.window_fill = Color32::from_gray(24);
+
+            // Button backgrounds
+            style.visuals.widgets.inactive.weak_bg_fill = Color32::from_gray(32);
+            style.visuals.widgets.hovered.weak_bg_fill = Color32::from_gray(32);
+
+            // Selectable button background
+            style.visuals.selection.bg_fill = Color32::from_rgb(0x00, 0x4E, 0xBA);
+        });
 
         let objects: State = [
             (
@@ -89,6 +131,7 @@ impl App {
             objects,
             notifications: Notifications::new(&cc.egui_ctx),
             bookmarks: vec![],
+            bookmarks_panel: BookmarksPanel::default(),
         }
     }
 
@@ -207,15 +250,16 @@ impl eframe::App for App {
 
         egui::Area::new(egui::Id::new("inspector"))
             .order(Order::Middle)
-            .anchor(Align2::RIGHT_TOP, Vec2::new(-8., 8.))
+            .anchor(Align2::RIGHT_TOP, Vec2::new(-24., 24.))
             .show(ctx, |ui| {
                 egui::Frame::NONE
                     .fill(Color32::from_black_alpha(128))
                     .corner_radius(4.)
                     .inner_margin(6.)
                     .show(ui, |ui| {
-                        ui.set_width(240.);
-                        render_bookmarks_panel(ui, &mut self.bookmarks, &mut self.transform);
+                        ui.set_width(220.);
+                        self.bookmarks_panel
+                            .render(ui, &mut self.bookmarks, &mut self.transform);
                     });
             });
 
