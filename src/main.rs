@@ -15,12 +15,75 @@ enum DragMode {
     Scaling,
 }
 
+#[derive(Default)]
+struct StateDirtyTracker {
+    is_dirty: bool,
+}
+impl StateDirtyTracker {
+    fn mark_dirty(&mut self) {
+        self.is_dirty = true;
+    }
+}
+
+type State = BTreeMap<Uuid, Object>;
+
+struct Stack {
+    snapshots: Vec<State>,
+    position: usize,
+}
+impl Stack {
+    pub fn new(snapshot: State) -> Self {
+        Self {
+            snapshots: vec![snapshot],
+            position: 0,
+        }
+    }
+
+    pub fn push(&mut self, snapshot: State) {
+        let _ = self.snapshots.split_off(self.position + 1);
+        self.snapshots.push(snapshot);
+        self.position = self.snapshots.len() - 1;
+    }
+
+    pub fn undo(&mut self) -> Option<&State> {
+        if self.snapshots.is_empty() {
+            None
+        } else {
+            self.position = self.position.saturating_sub(1);
+            Some(&self.snapshots[self.position])
+        }
+    }
+
+    pub fn redo(&mut self) -> Option<&State> {
+        if self.snapshots.is_empty() {
+            None
+        } else {
+            self.position = (self.position + 1).min(self.snapshots.len() - 1);
+            Some(&self.snapshots[self.position])
+        }
+    }
+
+    pub fn current(&self) -> &State {
+        &self.snapshots[self.position]
+    }
+
+    pub fn can_undo(&self) -> bool {
+        self.position > 0
+    }
+
+    pub fn can_redo(&self) -> bool {
+        self.position < self.snapshots.len() - 1
+    }
+}
+
 struct App {
     transform: TSTransform,
     objects: BTreeMap<Uuid, Object>,
     selected: Selection,
     tool: Tool,
     drag_mode: DragMode,
+    state_dirty: StateDirtyTracker,
+    stack: Stack,
 }
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -28,51 +91,55 @@ impl App {
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         cc.egui_ctx.set_fonts(fonts);
 
+        let objects: State = [
+            (
+                Uuid::new_v4(),
+                Object {
+                    transform: TSTransform::default(),
+                    data: ObjectKind::Rect {
+                        size: Vec2::new(100., 100.),
+                        color: Color32::YELLOW,
+                    },
+                },
+            ),
+            (
+                Uuid::new_v4(),
+                Object {
+                    transform: TSTransform {
+                        scaling: 0.5,
+                        translation: Vec2::new(100., 100.),
+                    },
+                    data: ObjectKind::Rect {
+                        size: Vec2::new(100., 100.),
+                        color: Color32::YELLOW,
+                    },
+                },
+            ),
+            (
+                Uuid::new_v4(),
+                Object {
+                    transform: TSTransform {
+                        scaling: 1.0,
+                        translation: Vec2::new(100., 100.),
+                    },
+                    data: ObjectKind::Text {
+                        text: "Hello world this is a long long long".into(),
+                        width: 120.,
+                        color: Color32::BLACK,
+                    },
+                },
+            ),
+        ]
+        .into();
+
         Self {
             tool: Tool::Moving,
             drag_mode: DragMode::Panning,
             transform: TSTransform::default(),
             selected: Selection::default(),
-            objects: [
-                (
-                    Uuid::new_v4(),
-                    Object {
-                        transform: TSTransform::default(),
-                        data: ObjectKind::Rect {
-                            size: Vec2::new(100., 100.),
-                            color: Color32::YELLOW,
-                        },
-                    },
-                ),
-                (
-                    Uuid::new_v4(),
-                    Object {
-                        transform: TSTransform {
-                            scaling: 0.5,
-                            translation: Vec2::new(100., 100.),
-                        },
-                        data: ObjectKind::Rect {
-                            size: Vec2::new(100., 100.),
-                            color: Color32::YELLOW,
-                        },
-                    },
-                ),
-                (
-                    Uuid::new_v4(),
-                    Object {
-                        transform: TSTransform {
-                            scaling: 1.0,
-                            translation: Vec2::new(100., 100.),
-                        },
-                        data: ObjectKind::Text {
-                            text: "Hello world this is a long long long".into(),
-                            width: 120.,
-                            color: Color32::BLACK,
-                        },
-                    },
-                ),
-            ]
-            .into(),
+            state_dirty: StateDirtyTracker::default(),
+            stack: Stack::new(objects.clone()),
+            objects,
         }
     }
 }
@@ -90,11 +157,13 @@ enum Tool {
     Bookmark,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 struct Object {
     transform: TSTransform,
     data: ObjectKind,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 enum ObjectKind {
     // Image(PathBuf), // TODO
     Rect {
@@ -252,6 +321,7 @@ impl eframe::App for App {
             let pointer_up = ctx.input(|inp| inp.pointer.primary_released());
             if pointer_up {
                 self.drag_mode = DragMode::Panning;
+                self.state_dirty.mark_dirty();
             }
         }
 
@@ -315,6 +385,7 @@ impl eframe::App for App {
                 && matches!(self.drag_mode, DragMode::Panning);
             update_transform(ui, &mut self.transform, &mut resp, allow_drag);
 
+            // Note for drags we only mark the state dirty after releasing the pointer
             let dragged = resp.dragged_by(PointerButton::Primary);
             if dragged {
                 match self.drag_mode {
@@ -498,6 +569,7 @@ impl eframe::App for App {
                         *transform = None;
                         string.clear();
                         *id = None;
+                        self.state_dirty.mark_dirty();
                     }
                 }
             }
@@ -545,6 +617,19 @@ impl eframe::App for App {
                     self.objects.remove(id);
                 }
                 self.selected.clear();
+                self.state_dirty.mark_dirty();
+            }
+
+            if ctx.input(|inp| inp.key_released(Key::Z)) {
+                if let Some(state) = self.stack.undo() {
+                    self.objects = state.clone();
+                }
+            }
+
+            if ctx.input(|inp| inp.key_released(Key::R)) {
+                if let Some(state) = self.stack.redo() {
+                    self.objects = state.clone();
+                }
             }
         }
 
@@ -598,6 +683,13 @@ impl eframe::App for App {
                 )
                 .on_hover_text("Add Bookmark");
             });
+
+        if self.state_dirty.is_dirty {
+            if *self.stack.current() != self.objects {
+                self.stack.push(self.objects.clone());
+            }
+            self.state_dirty.is_dirty = false;
+        }
     }
 }
 
