@@ -336,6 +336,8 @@ fn image_file_dialog() -> FileDialog {
                 ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "webp"
             }),
         )
+        .show_devices(false)
+        .title_bar(false)
         .default_file_filter("Images")
 }
 
