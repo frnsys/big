@@ -5,12 +5,18 @@ use egui::{
 };
 pub use egui_phosphor::regular as icons;
 
+enum DragMode {
+    Panning,
+    MovingObjects,
+    Resizing,
+}
+
 struct App {
     transform: TSTransform,
     objects: Vec<Object>,
     selected: Selection,
     tool: Tool,
-    dragging_objs: bool,
+    drag_mode: DragMode,
 }
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -20,7 +26,7 @@ impl App {
 
         Self {
             tool: Tool::Moving,
-            dragging_objs: false,
+            drag_mode: DragMode::Panning,
             transform: TSTransform::default(),
             selected: Selection::default(),
             objects: vec![
@@ -47,7 +53,7 @@ impl App {
                         translation: Vec2::new(100., 100.),
                     },
                     data: ObjectKind::Text {
-                        text: "Hello world".into(),
+                        text: "Hello world this is a long long long".into(),
                         width: 120.,
                         color: Color32::BLACK,
                     },
@@ -204,47 +210,77 @@ impl eframe::App for App {
             rects.push(rect);
         }
 
-        if !self.dragging_objs {
+        if matches!(self.drag_mode, DragMode::Panning) {
             let interact_pos = ctx.input(|inp| inp.pointer.interact_pos());
             let pointer_down = ctx.input(|inp| inp.pointer.primary_pressed());
             let selection_box_clicked = interact_pos
                 .zip(selection_rect)
                 .map(|(pos, rect)| rect.contains(pos) && pointer_down)
                 .unwrap_or(false);
-            self.dragging_objs = selection_box_clicked;
+            if selection_box_clicked {
+                self.drag_mode = DragMode::MovingObjects;
+            }
         } else {
             let pointer_up = ctx.input(|inp| inp.pointer.primary_released());
             if pointer_up {
-                self.dragging_objs = false;
+                self.drag_mode = DragMode::Panning;
+            }
+        }
+
+        if let Some(rect) = selection_rect {
+            let layer = LayerId::new(Order::Foreground, Id::new("selection"));
+            let painter = ctx.layer_painter(layer);
+            painter.rect_stroke(rect, 0., Stroke::new(2., Color32::RED), StrokeKind::Outside);
+
+            // Text handle
+            let width = 8.;
+            let height = 16.;
+            let x = rect.right();
+            let y = rect.center().y - height / 2.;
+            let handle = Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, height));
+            painter.rect_filled(handle, 0., Color32::RED);
+
+            if matches!(self.drag_mode, DragMode::Panning) {
+                let interact_pos = ctx.input(|inp| inp.pointer.interact_pos());
+                let pointer_down = ctx.input(|inp| inp.pointer.primary_pressed());
+                let handle_clicked = interact_pos
+                    .map(|pos| handle.contains(pos) && pointer_down)
+                    .unwrap_or(false);
+                if handle_clicked {
+                    self.drag_mode = DragMode::Resizing;
+                }
             }
         }
 
         // For canvas interaction (zooming & panning).
         egui::CentralPanel::default().show(ctx, |ui| {
             let mut resp = create_surface(ui);
-            let allow_drag = !matches!(self.tool, Tool::BoxSelect(_)) && !self.dragging_objs;
+            let allow_drag = !matches!(self.tool, Tool::BoxSelect(_))
+                && matches!(self.drag_mode, DragMode::Panning);
             update_transform(ui, &mut self.transform, &mut resp, allow_drag);
 
-            if self.dragging_objs {
-                let dragged = resp.dragged_by(PointerButton::Primary);
-                if dragged {
-                    for i in self.selected.ids.iter() {
-                        self.objects[*i].transform.translation += resp.drag_delta();
-                        // self.objects[*i].transform.translation = self
-                        //     .transform
-                        //     .inverse()
-                        //     .mul_pos(interact_pos.unwrap())
-                        //     .to_vec2();
+            let dragged = resp.dragged_by(PointerButton::Primary);
+            if dragged {
+                match self.drag_mode {
+                    DragMode::MovingObjects => {
+                        for i in self.selected.ids.iter() {
+                            self.objects[*i].transform.translation += resp.drag_delta();
+                        }
                     }
+                    DragMode::Resizing => {
+                        for i in self.selected.ids.iter() {
+                            match &mut self.objects[*i].data {
+                                ObjectKind::Rect { size, color } => {}
+                                ObjectKind::Text { text, width, color } => {
+                                    *width += resp.drag_delta().x;
+                                }
+                            }
+                        }
+                    }
+                    DragMode::Panning => {}
                 }
             }
         });
-
-        if let Some(rect) = selection_rect {
-            let layer = LayerId::new(Order::Foreground, Id::new("selection"));
-            let painter = ctx.layer_painter(layer);
-            painter.rect_stroke(rect, 0., Stroke::new(2., Color32::RED), StrokeKind::Outside);
-        }
 
         // TODO tool visual feedback
         match &mut self.tool {
