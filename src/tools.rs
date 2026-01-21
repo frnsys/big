@@ -268,7 +268,7 @@ impl Tool {
 
 pub fn toolbar(ctx: &Context, tool: &mut Tool) {
     egui::Area::new(egui::Id::new("tools"))
-        .fixed_pos(egui::pos2(32.0, 32.0))
+        .fixed_pos(egui::pos2(24.0, 24.0))
         .order(Order::Middle)
         .show(ctx, |ui| {
             select_button(

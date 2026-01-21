@@ -63,7 +63,7 @@ impl BookmarksPanel {
                     *current_transform = bookmark.transform;
                 }
 
-                let edit = egui::TextEdit::singleline(&mut bookmark.label).desired_width(130.);
+                let edit = egui::TextEdit::singleline(&mut bookmark.label).desired_width(90.);
                 ui.add(edit);
 
                 let resp = ui.button(icons::CORNERS_OUT).on_hover_text("Set view");

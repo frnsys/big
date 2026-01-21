@@ -257,7 +257,7 @@ impl eframe::App for App {
                     .corner_radius(4.)
                     .inner_margin(6.)
                     .show(ui, |ui| {
-                        ui.set_width(220.);
+                        ui.set_width(180.);
                         self.bookmarks_panel
                             .render(ui, &mut self.bookmarks, &mut self.transform);
                     });
