@@ -1,9 +1,12 @@
+use std::collections::BTreeMap;
+
 use egui::{
-    Align2, Color32, FontId, Id, LayerId, Order, Painter, PointerButton, Pos2, Rangef, Rect,
+    Align2, Color32, FontId, Id, Key, LayerId, Order, Painter, PointerButton, Pos2, Rangef, Rect,
     Response, Sense, Stroke, StrokeKind, TextBuffer, UiBuilder, Vec2, ahash::HashSet,
     emath::TSTransform,
 };
 pub use egui_phosphor::regular as icons;
+use uuid::Uuid;
 
 enum DragMode {
     Panning,
@@ -14,7 +17,7 @@ enum DragMode {
 
 struct App {
     transform: TSTransform,
-    objects: Vec<Object>,
+    objects: BTreeMap<Uuid, Object>,
     selected: Selection,
     tool: Tool,
     drag_mode: DragMode,
@@ -30,36 +33,46 @@ impl App {
             drag_mode: DragMode::Panning,
             transform: TSTransform::default(),
             selected: Selection::default(),
-            objects: vec![
-                Object {
-                    transform: TSTransform::default(),
-                    data: ObjectKind::Rect {
-                        size: Vec2::new(100., 100.),
-                        color: Color32::YELLOW,
+            objects: [
+                (
+                    Uuid::new_v4(),
+                    Object {
+                        transform: TSTransform::default(),
+                        data: ObjectKind::Rect {
+                            size: Vec2::new(100., 100.),
+                            color: Color32::YELLOW,
+                        },
                     },
-                },
-                Object {
-                    transform: TSTransform {
-                        scaling: 0.5,
-                        translation: Vec2::new(100., 100.),
+                ),
+                (
+                    Uuid::new_v4(),
+                    Object {
+                        transform: TSTransform {
+                            scaling: 0.5,
+                            translation: Vec2::new(100., 100.),
+                        },
+                        data: ObjectKind::Rect {
+                            size: Vec2::new(100., 100.),
+                            color: Color32::YELLOW,
+                        },
                     },
-                    data: ObjectKind::Rect {
-                        size: Vec2::new(100., 100.),
-                        color: Color32::YELLOW,
+                ),
+                (
+                    Uuid::new_v4(),
+                    Object {
+                        transform: TSTransform {
+                            scaling: 1.0,
+                            translation: Vec2::new(100., 100.),
+                        },
+                        data: ObjectKind::Text {
+                            text: "Hello world this is a long long long".into(),
+                            width: 120.,
+                            color: Color32::BLACK,
+                        },
                     },
-                },
-                Object {
-                    transform: TSTransform {
-                        scaling: 1.0,
-                        translation: Vec2::new(100., 100.),
-                    },
-                    data: ObjectKind::Text {
-                        text: "Hello world this is a long long long".into(),
-                        width: 120.,
-                        color: Color32::BLACK,
-                    },
-                },
-            ],
+                ),
+            ]
+            .into(),
         }
     }
 }
@@ -70,7 +83,7 @@ enum Tool {
         transform: Option<TSTransform>,
         string: String,
         width: f32,
-        id: Option<usize>,
+        id: Option<Uuid>,
     },
     BoxSelect(Option<(Pos2, Pos2)>),
     Placing,
@@ -122,19 +135,19 @@ impl ObjectKind {
 
 #[derive(Default)]
 struct Selection {
-    ids: HashSet<usize>,
+    ids: HashSet<Uuid>,
 }
 impl Selection {
-    fn replace(&mut self, ids: &[usize]) {
+    fn replace(&mut self, ids: &[Uuid]) {
         self.ids.clear();
         self.ids.extend(ids);
     }
 
-    fn append(&mut self, ids: &[usize]) {
+    fn append(&mut self, ids: &[Uuid]) {
         self.ids.extend(ids);
     }
 
-    fn remove(&mut self, id: usize) {
+    fn remove(&mut self, id: Uuid) {
         self.ids.remove(&id);
     }
 
@@ -142,11 +155,11 @@ impl Selection {
         self.ids.clear();
     }
 
-    fn contains(&self, id: usize) -> bool {
+    fn contains(&self, id: Uuid) -> bool {
         self.ids.contains(&id)
     }
 
-    fn toggle(&mut self, id: usize, append: bool) {
+    fn toggle(&mut self, id: Uuid, append: bool) {
         if self.ids.contains(&id) {
             if !append {
                 self.ids.clear();
@@ -183,8 +196,8 @@ impl eframe::App for App {
             None
         };
 
-        for (i, obj) in self.objects.iter_mut().enumerate() {
-            let skip = skip_id.is_some_and(|id| id == i);
+        for (i, obj) in self.objects.iter_mut() {
+            let skip = skip_id.as_ref().is_some_and(|id| id == i);
 
             let mut trans = obj.transform;
             trans.scaling *= self.transform.scaling;
@@ -207,7 +220,7 @@ impl eframe::App for App {
                     if !shift_pressed {
                         selection_rect = None;
                     }
-                    self.selected.toggle(i, shift_pressed);
+                    self.selected.toggle(*i, shift_pressed);
                 }
                 clicked.push(obj);
             }
@@ -215,14 +228,14 @@ impl eframe::App for App {
             let rect =
                 Rect::from_min_size(trans.translation.to_pos2(), rect.size() * trans.scaling);
 
-            if self.selected.contains(i) {
+            if self.selected.contains(*i) {
                 selection_rect = match selection_rect {
                     Some(base) => Some(base.union(rect)),
                     None => Some(rect),
                 };
             }
 
-            rects.push(rect);
+            rects.push((*i, rect));
         }
 
         if matches!(self.drag_mode, DragMode::Panning) {
@@ -249,7 +262,11 @@ impl eframe::App for App {
 
             if self.selected.ids.len() == 1
                 && let Some(id) = self.selected.ids.iter().next()
-                && matches!(self.objects[*id].data, ObjectKind::Text { .. })
+                && self
+                    .objects
+                    .get(id)
+                    .map(|obj| matches!(obj.data, ObjectKind::Text { .. }))
+                    .unwrap_or(false)
             {
                 // Text handle
                 let width = 8.;
@@ -303,15 +320,19 @@ impl eframe::App for App {
                 match self.drag_mode {
                     DragMode::Moving => {
                         for i in self.selected.ids.iter() {
-                            self.objects[*i].transform.translation += resp.drag_delta();
+                            if let Some(obj) = self.objects.get_mut(i) {
+                                obj.transform.translation += resp.drag_delta();
+                            }
                         }
                     }
                     DragMode::Resizing => {
                         for i in self.selected.ids.iter() {
-                            match &mut self.objects[*i].data {
-                                ObjectKind::Rect { size, color } => {}
-                                ObjectKind::Text { text, width, color } => {
-                                    *width += resp.drag_delta().x;
+                            if let Some(obj) = self.objects.get_mut(i) {
+                                match &mut obj.data {
+                                    ObjectKind::Rect { size, color } => {}
+                                    ObjectKind::Text { text, width, color } => {
+                                        *width += resp.drag_delta().x;
+                                    }
                                 }
                             }
                         }
@@ -324,7 +345,9 @@ impl eframe::App for App {
                             let br = rect.right_bottom();
                             let ratio = pos.x / br.x;
                             for i in self.selected.ids.iter() {
-                                self.objects[*i].transform.scaling *= ratio;
+                                if let Some(obj) = self.objects.get_mut(i) {
+                                    obj.transform.scaling *= ratio;
+                                }
                             }
                         }
                     }
@@ -401,75 +424,82 @@ impl eframe::App for App {
                 width,
                 id,
             } => {
-                ctx.input(|inp| {
-                    if inp.pointer.primary_clicked()
-                        && let Some(pos) = inp.pointer.interact_pos()
+                let clicked = ctx.input(|inp| inp.pointer.primary_clicked());
+                let interact_pos = ctx.input(|inp| inp.pointer.interact_pos());
+
+                if clicked && let Some(pos) = interact_pos {
+                    let tpos = self.transform.inverse().mul_pos(pos);
+                    let existing = rects.iter().find_map(|(i, r)| {
+                        (r.contains(pos)
+                            && self
+                                .objects
+                                .get(i)
+                                .map(|obj| matches!(obj.data, ObjectKind::Text { .. }))
+                                .unwrap_or(false))
+                        .then_some(i)
+                    });
+                    if let Some(i) = existing
+                        && let Some(obj) = self.objects.get(i)
                     {
-                        let tpos = self.transform.inverse().mul_pos(pos);
-                        let existing = rects.iter().enumerate().find_map(|(i, r)| {
-                            (r.contains(pos)
-                                && matches!(self.objects[i].data, ObjectKind::Text { .. }))
-                            .then_some(i)
+                        *id = Some(*i);
+                        if let ObjectKind::Text {
+                            text,
+                            width: w,
+                            color,
+                        } = &obj.data
+                        {
+                            *transform = Some(obj.transform);
+                            string.clear();
+                            string.push_str(&text);
+                            *width = *w;
+                        }
+                    } else {
+                        *transform = Some(TSTransform {
+                            translation: tpos.to_vec2(),
+                            scaling: 1. / self.transform.scaling,
                         });
-                        if let Some(i) = existing {
-                            *id = Some(i);
-                            let obj = &self.objects[i];
-                            if let ObjectKind::Text {
-                                text,
-                                width: w,
-                                color,
-                            } = &obj.data
-                            {
-                                *transform = Some(obj.transform);
-                                string.clear();
-                                string.push_str(&text);
-                                *width = *w;
+                    }
+                }
+
+                if let Some(trans) = *transform {
+                    let escape = ctx.input(|inp| {
+                        inp.events.iter().any(|ev| match ev {
+                            egui::Event::Key {
+                                key: egui::Key::Escape,
+                                pressed: true,
+                                ..
+                            } => true,
+                            _ => false,
+                        })
+                    });
+
+                    if escape {
+                        if let Some(i) = id
+                            && let Some(obj) = self.objects.get_mut(i)
+                        {
+                            if let ObjectKind::Text { text, .. } = &mut obj.data {
+                                *text = string.take();
                             }
                         } else {
-                            *transform = Some(TSTransform {
-                                translation: tpos.to_vec2(),
-                                scaling: 1. / self.transform.scaling,
-                            });
-                        }
-                    }
-
-                    if let Some(trans) = *transform {
-                        for ev in &inp.events {
-                            match ev {
-                                egui::Event::Key {
-                                    key: egui::Key::Enter | egui::Key::Escape,
-                                    pressed: true,
-                                    modifiers,
-                                    ..
-                                } => {
-                                    if !modifiers.shift {
-                                        if let Some(i) = id {
-                                            let obj = &mut self.objects[*i];
-                                            if let ObjectKind::Text { text, .. } = &mut obj.data {
-                                                *text = string.take();
-                                            }
-                                        } else {
-                                            if !string.trim().is_empty() {
-                                                self.objects.push(Object {
-                                                    transform: trans,
-                                                    data: ObjectKind::Text {
-                                                        text: string.take(),
-                                                        width: *width,
-                                                        color: Color32::LIGHT_BLUE,
-                                                    },
-                                                });
-                                            }
-                                        }
-                                        *transform = None;
-                                        string.clear();
-                                        *id = None;
-                                    }
-                                }
-                                _ => {}
+                            if !string.trim().is_empty() {
+                                self.objects.insert(
+                                    Uuid::new_v4(),
+                                    Object {
+                                        transform: trans,
+                                        data: ObjectKind::Text {
+                                            text: string.take(),
+                                            width: *width,
+                                            color: Color32::LIGHT_BLUE,
+                                        },
+                                    },
+                                );
                             }
                         }
+                        *transform = None;
+                        string.clear();
+                        *id = None;
                     }
-                });
+                }
             }
             Tool::BoxSelect(rect) => {
                 ctx.input(|inp| {
@@ -493,9 +523,8 @@ impl eframe::App for App {
                         let r = Rect::from_two_pos(*start, *end);
                         let ids: Vec<_> = rects
                             .iter()
-                            .enumerate()
                             .filter(|(_, rect)| rect.intersects(r))
-                            .map(|(i, _)| i)
+                            .map(|(i, _)| *i)
                             .collect();
                         if shift_pressed {
                             self.selected.append(&ids);
@@ -508,6 +537,15 @@ impl eframe::App for App {
             }
             Tool::Placing => todo!(),
             Tool::Bookmark => todo!(),
+        }
+
+        if !ctx.memory(|mem| mem.focused().is_some()) {
+            if ctx.input(|inp| inp.key_released(Key::X)) {
+                for id in &self.selected.ids {
+                    self.objects.remove(id);
+                }
+                self.selected.clear();
+            }
         }
 
         egui::Area::new(egui::Id::new("tools"))
@@ -614,7 +652,7 @@ fn update_transform(
         });
         let zoom_delta = delta.unwrap_or(zoom_delta);
         if zoom_delta != 1.0 {
-            let zoom_range = Rangef::new(f32::EPSILON, 2.0);
+            let zoom_range = Rangef::new(f32::EPSILON, 100.0);
             let zoom_delta = zoom_delta.clamp(
                 zoom_range.min / transform.scaling,
                 zoom_range.max / transform.scaling,
