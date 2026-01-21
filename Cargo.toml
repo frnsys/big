@@ -10,3 +10,6 @@ egui-phosphor = "0.11.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_yaml = "0.9.34"
 uuid = { version = "1.19.0", features = ["serde", "v4"] }
+egui-file-dialog = "0.12.0"
+egui_extras = { version = "0.33.3", features = ["file", "gif", "image", "webp"] }
+image = { version = "0.25", features = ["jpeg", "png"] }

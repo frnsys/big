@@ -1,11 +1,20 @@
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::{Arc, LazyLock},
+};
 
 use egui::{
-    Align, Align2, Color32, FontId, Id, Key, LayerId, Order, Painter, PointerButton, Pos2, Rangef,
-    Rect, Response, Sense, Stroke, StrokeKind, TextBuffer, UiBuilder, Vec2, ahash::HashSet,
+    Align, Align2, Color32, ColorImage, FontId, Id, Key, LayerId, Order, Painter, PointerButton,
+    Pos2, Rangef, Rect, Response, Sense, Stroke, StrokeKind, TextBuffer, TextureHandle, TextureId,
+    UiBuilder, Vec2,
+    ahash::{HashMap, HashSet},
     emath::TSTransform,
+    mutex::Mutex,
 };
+use egui_file_dialog::FileDialog;
 pub use egui_phosphor::regular as icons;
+use image::{DynamicImage, ImageError};
 use uuid::Uuid;
 
 enum DragMode {
@@ -91,12 +100,14 @@ struct App {
     stack: Stack,
     notifications: Vec<Notification>,
     bookmarks: Vec<Bookmark>,
+    file_dialog: FileDialog,
 }
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         cc.egui_ctx.set_fonts(fonts);
+        egui_extras::install_image_loaders(&cc.egui_ctx);
 
         let objects: State = [
             (
@@ -149,6 +160,15 @@ impl App {
             objects,
             notifications: vec![],
             bookmarks: vec![],
+            file_dialog: FileDialog::new()
+                .add_file_filter(
+                    "Images",
+                    Arc::new(|p| {
+                        let ext = p.extension().unwrap_or_default();
+                        ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "webp"
+                    }),
+                )
+                .default_file_filter("Images"),
         }
     }
 }
@@ -162,7 +182,9 @@ enum Tool {
         id: Option<Uuid>,
     },
     BoxSelect(Option<(Pos2, Pos2)>),
-    Placing,
+    Placing {
+        position: Option<Pos2>,
+    },
 }
 
 struct Bookmark {
@@ -182,7 +204,6 @@ struct Object {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 enum ObjectKind {
-    // Image(PathBuf), // TODO
     Rect {
         size: Vec2,
         color: Color32,
@@ -192,9 +213,12 @@ enum ObjectKind {
         width: f32,
         color: Color32,
     },
+    Image {
+        source: PathBuf,
+    },
 }
 impl ObjectKind {
-    fn paint(&self, painter: &Painter) -> Rect {
+    fn paint(&self, painter: &mut Painter) -> Rect {
         match self {
             ObjectKind::Rect { size, color } => {
                 let rect = Rect::from_min_size(Pos2::ZERO, *size);
@@ -208,13 +232,24 @@ impl ObjectKind {
                 painter.galley(Pos2::ZERO, galley.clone(), *color);
                 galley.rect
             }
+            ObjectKind::Image { source } => {
+                if let Some(info) = TextureCache::get(&source) {
+                    let uv = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                    let rect = Rect::from_min_size(Pos2::ZERO, info.size);
+                    painter.set_clip_rect(rect);
+                    painter.image(info.id, rect, uv, Color32::WHITE);
+                    rect
+                } else {
+                    Rect::ZERO
+                }
+            }
         }
     }
 
     fn order(&self) -> Order {
         match self {
-            ObjectKind::Rect { .. } => Order::Middle,
-            ObjectKind::Text { .. } => Order::Foreground,
+            ObjectKind::Rect { .. } | ObjectKind::Image { .. } => Order::Background,
+            ObjectKind::Text { .. } => Order::Middle,
         }
     }
 }
@@ -263,6 +298,8 @@ impl Selection {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        TextureCache::update(ctx);
+
         let clicked = ctx.input(|inp| inp.pointer.primary_clicked());
         let interact_pos = if clicked {
             ctx.input(|inp| inp.pointer.interact_pos())
@@ -293,8 +330,8 @@ impl eframe::App for App {
             let rect = if !skip {
                 let layer = LayerId::new(obj.data.order(), Id::new(i));
                 ctx.set_transform_layer(layer, trans);
-                let painter = ctx.layer_painter(layer);
-                obj.data.paint(&painter)
+                let mut painter = ctx.layer_painter(layer);
+                obj.data.paint(&mut painter)
             } else {
                 Rect::ZERO
             };
@@ -396,8 +433,10 @@ impl eframe::App for App {
         }
 
         // For canvas interaction (zooming & panning).
+        let mut surface_clicked = false;
         egui::CentralPanel::default().show(ctx, |ui| {
             let mut resp = create_surface(ui);
+            surface_clicked = resp.clicked();
             let allow_drag = !matches!(self.tool, Tool::BoxSelect(_))
                 && matches!(self.drag_mode, DragMode::Panning);
             update_transform(ui, &mut self.transform, &mut resp, allow_drag);
@@ -409,7 +448,8 @@ impl eframe::App for App {
                     DragMode::Moving => {
                         for i in self.selected.ids.iter() {
                             if let Some(obj) = self.objects.get_mut(i) {
-                                obj.transform.translation += resp.drag_delta();
+                                obj.transform.translation +=
+                                    resp.drag_delta() / self.transform.scaling;
                             }
                         }
                     }
@@ -417,10 +457,10 @@ impl eframe::App for App {
                         for i in self.selected.ids.iter() {
                             if let Some(obj) = self.objects.get_mut(i) {
                                 match &mut obj.data {
-                                    ObjectKind::Rect { size, color } => {}
                                     ObjectKind::Text { text, width, color } => {
                                         *width += resp.drag_delta().x;
                                     }
+                                    _ => {}
                                 }
                             }
                         }
@@ -461,7 +501,7 @@ impl eframe::App for App {
                     trans.translation -= Vec2::new(1., 1.); // Offset to account for textedit border
 
                     let area = egui::Area::new(egui::Id::new("text-input"))
-                        .order(Order::Foreground)
+                        .order(Order::Middle)
                         .anchor(Align2::LEFT_TOP, Vec2::ZERO);
 
                     let layer = area.layer();
@@ -499,7 +539,7 @@ impl eframe::App for App {
                     );
                 }
             }
-            Tool::Placing => todo!(),
+            Tool::Placing { .. } => {}
         }
 
         // tool interaction
@@ -511,10 +551,9 @@ impl eframe::App for App {
                 width,
                 id,
             } => {
-                let clicked = ctx.input(|inp| inp.pointer.primary_clicked());
                 let interact_pos = ctx.input(|inp| inp.pointer.interact_pos());
 
-                if clicked && let Some(pos) = interact_pos {
+                if surface_clicked && let Some(pos) = interact_pos {
                     let tpos = self.transform.inverse().mul_pos(pos);
                     let existing = rects.iter().find_map(|(i, r)| {
                         (r.contains(pos)
@@ -623,7 +662,39 @@ impl eframe::App for App {
                     }
                 });
             }
-            Tool::Placing => todo!(),
+            Tool::Placing { position } => {
+                if surface_clicked {
+                    self.file_dialog.pick_multiple();
+                    let interact_pos = ctx.input(|inp| inp.pointer.interact_pos());
+                    *position = interact_pos;
+                }
+            }
+        }
+
+        self.file_dialog.update(ctx);
+        if let Some(paths) = self.file_dialog.take_picked_multiple() {
+            if let Tool::Placing {
+                position: Some(position),
+            } = &self.tool
+            {
+                let tpos = self.transform.inverse().mul_pos(*position);
+                let mut trans = TSTransform {
+                    translation: tpos.to_vec2(),
+                    scaling: 1. / self.transform.scaling,
+                };
+
+                for (i, path) in paths.into_iter().enumerate() {
+                    trans.translation.y += i as f32 * 5.;
+                    TextureCache::request_load(&path);
+                    self.objects.insert(
+                        Uuid::new_v4(),
+                        Object {
+                            transform: trans,
+                            data: ObjectKind::Image { source: path },
+                        },
+                    );
+                }
+            }
         }
 
         if !ctx.memory(|mem| mem.focused().is_some()) {
@@ -693,7 +764,6 @@ impl eframe::App for App {
                                 label: "new bookmark".into(),
                                 transform: self.transform.clone(),
                             });
-                            // TODO
                         }
 
                         let mut to_delete = None;
@@ -740,8 +810,8 @@ impl eframe::App for App {
                     ui,
                     icons::IMAGES,
                     &mut self.tool,
-                    |mode| matches!(mode, Tool::Placing),
-                    || Tool::Placing,
+                    |mode| matches!(mode, Tool::Placing { .. }),
+                    || Tool::Placing { position: None },
                 )
                 .on_hover_text("Place Images");
                 select_button(
@@ -851,3 +921,135 @@ fn main() -> eframe::Result {
     };
     eframe::run_native("canvas", options, Box::new(|cc| Ok(Box::new(App::new(cc)))))
 }
+
+/// Load an egui texture from a path.
+pub fn load_texture_from_path<P: AsRef<Path>>(
+    ctx: &egui::Context,
+    path: P,
+) -> Result<TextureHandle, ImageProcessingError> {
+    let image = open_image(&path)?;
+    let image = image.into_rgba8();
+    let image = egui::ColorImage::from_rgba_premultiplied(
+        [image.width() as usize, image.height() as usize],
+        &image.into_raw(),
+    );
+    let handle = ctx.load_texture(
+        path.as_ref().to_string_lossy(),
+        image,
+        egui::TextureOptions::default(),
+    );
+    Ok(handle)
+}
+
+#[derive(Debug)]
+pub enum ImageProcessingError {
+    IOError(std::io::Error),
+    ImageError(ImageError),
+}
+impl From<ImageError> for ImageProcessingError {
+    fn from(value: ImageError) -> Self {
+        Self::ImageError(value)
+    }
+}
+impl From<std::io::Error> for ImageProcessingError {
+    fn from(value: std::io::Error) -> Self {
+        Self::IOError(value)
+    }
+}
+
+/// Open an image based on contents rather than just the extension.
+pub fn open_image<P: AsRef<Path>>(path: P) -> Result<DynamicImage, ImageProcessingError> {
+    let im = image::ImageReader::open(path)?
+        .with_guessed_format()?
+        .decode()?;
+    Ok(im)
+}
+
+#[derive(Clone)]
+pub struct TextureInfo {
+    pub id: TextureId,
+    pub size: Vec2,
+    pub handle: TextureHandle,
+}
+
+enum LoadingState {
+    Pending,
+    Loaded(TextureInfo),
+}
+
+pub struct TextureCache {
+    entries: HashMap<PathBuf, LoadingState>,
+    rx: std::sync::mpsc::Receiver<(PathBuf, ColorImage)>,
+    tx: std::sync::mpsc::Sender<(PathBuf, ColorImage)>,
+}
+impl TextureCache {
+    /// Call this every frame in your `update` loop.
+    /// It moves pending pixel data from CPU RAM to GPU VRAM.
+    pub fn update(ctx: &egui::Context) {
+        let mut cache = TEXTURE_CACHE.lock();
+
+        // Process all images that finished loading in the background
+        while let Ok((path, color_image)) = cache.rx.try_recv() {
+            let size = Vec2::new(color_image.width() as f32, color_image.height() as f32);
+            let handle = ctx.load_texture(path.to_string_lossy(), color_image, Default::default());
+
+            cache.entries.insert(
+                path,
+                LoadingState::Loaded(TextureInfo {
+                    id: handle.id(),
+                    handle,
+                    size,
+                }),
+            );
+        }
+    }
+
+    /// Submits a path to be loaded. Idempotent.
+    pub fn request_load(path: &Path) {
+        let mut cache = TEXTURE_CACHE.lock();
+        let path_buf = path.to_path_buf();
+
+        if cache.entries.contains_key(&path_buf) {
+            return; // Already loading or loaded
+        }
+
+        cache
+            .entries
+            .insert(path_buf.clone(), LoadingState::Pending);
+        let tx = cache.tx.clone();
+
+        // Spawn background thread
+        std::thread::spawn(move || {
+            println!("LOADING: {:?}", path_buf);
+            if let Ok(img) = image::open(&path_buf) {
+                let rgba = img.to_rgba8();
+                let color_image = ColorImage::from_rgba_unmultiplied(
+                    [img.width() as usize, img.height() as usize],
+                    rgba.as_flat_samples().as_slice(),
+                );
+                println!("LOADED: {:?}", path_buf);
+                let _ = tx.send((path_buf, color_image));
+            } else {
+                eprintln!("Failed to load: {path_buf:?}");
+            }
+        });
+    }
+
+    /// Get the texture info if available
+    pub fn get(path: &Path) -> Option<TextureInfo> {
+        let cache = TEXTURE_CACHE.lock();
+        match cache.entries.get(path) {
+            Some(LoadingState::Loaded(info)) => Some(info.clone()),
+            _ => None,
+        }
+    }
+}
+
+static TEXTURE_CACHE: LazyLock<Mutex<TextureCache>> = LazyLock::new(|| {
+    let (tx, rx) = std::sync::mpsc::channel();
+    Mutex::new(TextureCache {
+        entries: HashMap::default(),
+        rx,
+        tx,
+    })
+});
