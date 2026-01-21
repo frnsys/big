@@ -6,8 +6,6 @@ mod select;
 mod stack;
 mod tools;
 
-use std::collections::BTreeMap;
-
 use egui::{
     Align2, Color32, Context, Id, Key, LayerId, Order, PointerButton, Rangef, Rect, Response,
     Sense, UiBuilder, Vec2, emath::TSTransform,
@@ -32,7 +30,7 @@ struct App {
     transform: TSTransform,
     selection: SelectionState,
     bookmarks: Vec<Bookmark>,
-    objects: BTreeMap<Uuid, Object>,
+    objects: State,
     notifications: Notifications,
 }
 impl App {
@@ -99,10 +97,7 @@ impl App {
         for (i, obj) in self.objects.iter_mut() {
             let dont_render = skip.as_ref().is_some_and(|id| id == i);
 
-            let mut trans = obj.transform;
-            trans.scaling *= self.transform.scaling;
-            trans.translation =
-                (obj.transform.translation * self.transform.scaling) + self.transform.translation;
+            let trans = self.transform * obj.transform;
 
             let rect = if !dont_render {
                 let layer = LayerId::new(Order::Background, Id::new(i));

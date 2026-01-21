@@ -67,11 +67,7 @@ impl Tool {
                 ..
             } => {
                 if let Some(trans) = transform {
-                    let mut trans = *trans;
-                    // TODO is this the same as multiplying the two?
-                    trans.scaling *= global_trans.scaling;
-                    trans.translation =
-                        (trans.translation * global_trans.scaling) + global_trans.translation;
+                    let mut trans = global_trans * *trans;
                     trans.translation -= Vec2::new(1., 1.); // Offset to account for textedit border
                     floating_text_input(ctx, trans, string, *width);
                 }
