@@ -21,6 +21,7 @@ pub enum Tool {
         transform: Option<TSTransform>,
         string: String,
         width: f32,
+        color: Color32,
         id: Option<Uuid>,
     },
     BoxSelect(Option<(Pos2, Pos2)>),
@@ -64,12 +65,13 @@ impl Tool {
                 transform,
                 string,
                 width,
+                color,
                 ..
             } => {
                 if let Some(trans) = transform {
                     let mut trans = global_trans * *trans;
                     trans.translation -= Vec2::new(1., 1.); // Offset to account for textedit border
-                    floating_text_input(ctx, trans, string, *width);
+                    floating_text_input(ctx, trans, string, *width, *color);
                 }
             }
             Tool::BoxSelect(rect) => {
@@ -132,6 +134,7 @@ impl Tool {
                 transform,
                 string,
                 width,
+                color,
                 id,
             } => {
                 let interact_pos = ctx.input(|inp| inp.pointer.interact_pos());
@@ -153,13 +156,14 @@ impl Tool {
                         if let ObjectKind::Text {
                             text,
                             width: w,
-                            color,
+                            color: c,
                         } = &obj.data
                         {
                             *transform = Some(obj.transform);
                             string.clear();
                             string.push_str(&text);
                             *width = *w;
+                            *color = *c;
                         }
                     } else {
                         *transform = Some(TSTransform {
@@ -185,8 +189,9 @@ impl Tool {
                         if let Some(i) = id
                             && let Some(obj) = objects.get_mut(i)
                         {
-                            if let ObjectKind::Text { text, .. } = &mut obj.data {
+                            if let ObjectKind::Text { text, color: c, .. } = &mut obj.data {
                                 *text = string.take();
+                                *c = *color;
                             }
                         } else {
                             if !string.trim().is_empty() {
@@ -197,7 +202,7 @@ impl Tool {
                                         data: ObjectKind::Text {
                                             text: string.take(),
                                             width: *width,
-                                            color: Color32::LIGHT_BLUE,
+                                            color: *color,
                                         },
                                     },
                                 );
@@ -293,19 +298,26 @@ pub fn toolbar(ctx: &Context, tool: &mut Tool) {
                 || Tool::BoxSelect(None),
             )
             .on_hover_text("Selection");
-            select_button(
-                ui,
-                icons::CURSOR_TEXT,
-                tool,
-                |mode| matches!(mode, Tool::Typing { .. }),
-                || Tool::Typing {
-                    transform: None,
-                    string: String::new(),
-                    width: 180.,
-                    id: None,
-                },
-            )
-            .on_hover_text("Insert Text");
+            ui.horizontal(|ui| {
+                select_button(
+                    ui,
+                    icons::CURSOR_TEXT,
+                    tool,
+                    |mode| matches!(mode, Tool::Typing { .. }),
+                    || Tool::Typing {
+                        transform: None,
+                        string: String::new(),
+                        width: 180.,
+                        color: Color32::BLACK,
+                        id: None,
+                    },
+                )
+                .on_hover_text("Insert Text");
+
+                if let Tool::Typing { color, .. } = tool {
+                    ui.color_edit_button_srgba(color);
+                }
+            });
         });
 }
 
@@ -337,7 +349,13 @@ fn image_file_dialog() -> FileDialog {
         .default_file_filter("Images")
 }
 
-fn floating_text_input(ctx: &Context, trans: TSTransform, text: &mut String, width: f32) {
+fn floating_text_input(
+    ctx: &Context,
+    trans: TSTransform,
+    text: &mut String,
+    width: f32,
+    color: Color32,
+) {
     let area = egui::Area::new(egui::Id::new("text-input"))
         .order(Order::Middle)
         .anchor(Align2::LEFT_TOP, Vec2::ZERO);
@@ -358,6 +376,7 @@ fn floating_text_input(ctx: &Context, trans: TSTransform, text: &mut String, wid
                         .margin(0.)
                         .frame(false)
                         .font(FONT)
+                        .text_color_opt(Some(color))
                         .background_color(Color32::TRANSPARENT),
                 );
                 resp.request_focus();
