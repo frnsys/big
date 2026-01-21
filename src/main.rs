@@ -1,6 +1,6 @@
 use egui::{
     Color32, FontId, Id, LayerId, Order, Painter, PointerButton, Pos2, Rangef, Rect, Response,
-    Sense, Stroke, StrokeKind, UiBuilder, Vec2, ahash::HashSet, emath::TSTransform,
+    Sense, Stroke, StrokeKind, TextBuffer, UiBuilder, Vec2, ahash::HashSet, emath::TSTransform,
 };
 pub use egui_phosphor::regular as icons;
 
@@ -56,7 +56,11 @@ impl App {
 
 enum Tool {
     Moving,
-    Typing,
+    Typing {
+        transform: Option<TSTransform>,
+        string: String,
+        id: Option<usize>,
+    },
     BoxSelect(Option<(Pos2, Pos2)>),
     Placing,
     Bookmark,
@@ -156,9 +160,11 @@ impl eframe::App for App {
             None
         };
 
+        let allow_select = !matches!(self.tool, Tool::Typing { .. });
         let mut rects = Vec::with_capacity(self.objects.len());
         let shift_pressed = ctx.input(|inp| inp.modifiers.shift_only());
         let mut selection_rect: Option<Rect> = None;
+        let mut clicked = vec![];
         for (i, obj) in self.objects.iter_mut().enumerate() {
             let mut trans = obj.transform;
             trans.scaling *= self.transform.scaling;
@@ -173,10 +179,13 @@ impl eframe::App for App {
             if let Some(pos) = interact_pos
                 && rect.contains(trans.inverse().mul_pos(pos))
             {
-                if !shift_pressed {
-                    selection_rect = None;
+                if allow_select {
+                    if !shift_pressed {
+                        selection_rect = None;
+                    }
+                    self.selected.toggle(i, shift_pressed);
                 }
-                self.selected.toggle(i, shift_pressed);
+                clicked.push(obj);
             }
 
             let rect =
@@ -200,10 +209,30 @@ impl eframe::App for App {
 
         // TODO tool visual feedback
         match &self.tool {
-            Tool::Moving => {
-                // TODO
+            Tool::Moving => (),
+            Tool::Typing {
+                transform,
+                string,
+                id,
+            } => {
+                if let Some(trans) = transform {
+                    let text = ObjectKind::Text {
+                        text: string.clone(),
+                        width: 200.,
+                        color: Color32::GREEN,
+                    };
+
+                    let mut trans = *trans;
+                    trans.scaling *= self.transform.scaling;
+                    trans.translation =
+                        (trans.translation * self.transform.scaling) + self.transform.translation;
+                    let layer = LayerId::new(Order::Middle, Id::new("text-input"));
+                    ctx.set_transform_layer(layer, trans);
+                    let painter = ctx.layer_painter(layer);
+                    painter.vline(0., 0.0..=12., Stroke::new(1., Color32::LIGHT_YELLOW));
+                    text.paint(&painter);
+                }
             }
-            Tool::Typing => todo!(),
             Tool::BoxSelect(rect) => {
                 if let Some((start, end)) = rect {
                     let layer = LayerId::new(Order::Foreground, Id::new("selection-box"));
@@ -222,10 +251,82 @@ impl eframe::App for App {
 
         // tool interaction
         match &mut self.tool {
-            Tool::Moving => {
-                // TODO
+            Tool::Moving => (),
+            Tool::Typing {
+                transform,
+                string,
+                id,
+            } => {
+                ctx.input(|inp| {
+                    if inp.pointer.primary_clicked()
+                        && let Some(pos) = inp.pointer.interact_pos()
+                    {
+                        let tpos = self.transform.inverse().mul_pos(pos);
+                        let existing = rects.iter().enumerate().find_map(|(i, r)| {
+                            (r.contains(pos)
+                                && matches!(self.objects[i].data, ObjectKind::Text { .. }))
+                            .then_some(i)
+                        });
+                        if let Some(i) = existing {
+                            *id = Some(i);
+                            let obj = &self.objects[i];
+                            if let ObjectKind::Text { text, width, color } = &obj.data {
+                                *transform = Some(obj.transform);
+                                string.clear();
+                                string.push_str(&text);
+                            }
+                        } else {
+                            *transform = Some(TSTransform {
+                                translation: tpos.to_vec2(),
+                                scaling: 1. / self.transform.scaling,
+                            });
+                        }
+                    }
+
+                    if let Some(trans) = *transform {
+                        for ev in &inp.events {
+                            match ev {
+                                egui::Event::Text(text) => {
+                                    string.push_str(text);
+                                }
+                                egui::Event::Key {
+                                    key: egui::Key::Backspace,
+                                    pressed: true,
+                                    ..
+                                } => {
+                                    string.pop();
+                                }
+                                egui::Event::Key {
+                                    key: egui::Key::Enter | egui::Key::Escape,
+                                    pressed: true,
+                                    ..
+                                } => {
+                                    if let Some(i) = id {
+                                        let obj = &mut self.objects[*i];
+                                        if let ObjectKind::Text { text, width, color } =
+                                            &mut obj.data
+                                        {
+                                            *text = string.take();
+                                        }
+                                    } else {
+                                        self.objects.push(Object {
+                                            transform: trans,
+                                            data: ObjectKind::Text {
+                                                text: string.take(),
+                                                width: 200.,
+                                                color: Color32::LIGHT_BLUE,
+                                            },
+                                        });
+                                    }
+                                    *transform = None;
+                                    string.clear();
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                });
             }
-            Tool::Typing => todo!(),
             Tool::BoxSelect(rect) => {
                 ctx.input(|inp| {
                     if inp.pointer.primary_pressed()
@@ -297,8 +398,12 @@ impl eframe::App for App {
                     ui,
                     icons::CURSOR_TEXT,
                     &mut self.tool,
-                    |mode| matches!(mode, Tool::Typing),
-                    || Tool::Typing,
+                    |mode| matches!(mode, Tool::Typing { .. }),
+                    || Tool::Typing {
+                        transform: None,
+                        string: String::new(),
+                        id: None,
+                    },
                 )
                 .on_hover_text("Insert Text");
                 select_button(
