@@ -1,6 +1,7 @@
 use egui::{
-    Color32, FontId, Id, LayerId, Order, Painter, PointerButton, Pos2, Rangef, Rect, Response,
-    Sense, Stroke, StrokeKind, TextBuffer, UiBuilder, Vec2, ahash::HashSet, emath::TSTransform,
+    Align2, Color32, FontId, Id, LayerId, Order, Painter, PointerButton, Pos2, Rangef, Rect,
+    Response, Sense, Stroke, StrokeKind, TextBuffer, UiBuilder, Vec2, ahash::HashSet,
+    emath::TSTransform,
 };
 pub use egui_phosphor::regular as icons;
 
@@ -208,29 +209,43 @@ impl eframe::App for App {
         }
 
         // TODO tool visual feedback
-        match &self.tool {
+        match &mut self.tool {
             Tool::Moving => (),
             Tool::Typing {
-                transform,
-                string,
-                id,
+                transform, string, ..
             } => {
                 if let Some(trans) = transform {
-                    let text = ObjectKind::Text {
-                        text: string.clone(),
-                        width: 200.,
-                        color: Color32::GREEN,
-                    };
-
                     let mut trans = *trans;
                     trans.scaling *= self.transform.scaling;
                     trans.translation =
                         (trans.translation * self.transform.scaling) + self.transform.translation;
-                    let layer = LayerId::new(Order::Middle, Id::new("text-input"));
+                    trans.translation -= Vec2::new(1., 1.); // Offset to account for textedit border
+
+                    let area = egui::Area::new(egui::Id::new("text-input"))
+                        .order(Order::Foreground)
+                        .anchor(Align2::LEFT_TOP, Vec2::ZERO);
+
+                    let layer = area.layer();
                     ctx.set_transform_layer(layer, trans);
-                    let painter = ctx.layer_painter(layer);
-                    painter.vline(0., 0.0..=12., Stroke::new(1., Color32::LIGHT_YELLOW));
-                    text.paint(&painter);
+                    area.show(ctx, |ui| {
+                        egui::Frame::NONE
+                            .stroke(Stroke::new(
+                                1.,
+                                Color32::from_rgba_premultiplied(0x22, 0x22, 0x22, 0xAA),
+                            ))
+                            .show(ui, |ui| {
+                                const FONT: FontId = FontId::proportional(12.);
+                                let resp = ui.add(
+                                    egui::TextEdit::multiline(string)
+                                        .desired_width(200.)
+                                        .margin(0.)
+                                        .frame(false)
+                                        .font(FONT)
+                                        .background_color(Color32::TRANSPARENT),
+                                );
+                                resp.request_focus();
+                            });
+                    });
                 }
             }
             Tool::BoxSelect(rect) => {
@@ -286,40 +301,33 @@ impl eframe::App for App {
                     if let Some(trans) = *transform {
                         for ev in &inp.events {
                             match ev {
-                                egui::Event::Text(text) => {
-                                    string.push_str(text);
-                                }
-                                egui::Event::Key {
-                                    key: egui::Key::Backspace,
-                                    pressed: true,
-                                    ..
-                                } => {
-                                    string.pop();
-                                }
                                 egui::Event::Key {
                                     key: egui::Key::Enter | egui::Key::Escape,
                                     pressed: true,
+                                    modifiers,
                                     ..
                                 } => {
-                                    if let Some(i) = id {
-                                        let obj = &mut self.objects[*i];
-                                        if let ObjectKind::Text { text, width, color } =
-                                            &mut obj.data
-                                        {
-                                            *text = string.take();
+                                    if !modifiers.shift {
+                                        if let Some(i) = id {
+                                            let obj = &mut self.objects[*i];
+                                            if let ObjectKind::Text { text, width, color } =
+                                                &mut obj.data
+                                            {
+                                                *text = string.take();
+                                            }
+                                        } else {
+                                            self.objects.push(Object {
+                                                transform: trans,
+                                                data: ObjectKind::Text {
+                                                    text: string.take(),
+                                                    width: 200.,
+                                                    color: Color32::LIGHT_BLUE,
+                                                },
+                                            });
                                         }
-                                    } else {
-                                        self.objects.push(Object {
-                                            transform: trans,
-                                            data: ObjectKind::Text {
-                                                text: string.take(),
-                                                width: 200.,
-                                                color: Color32::LIGHT_BLUE,
-                                            },
-                                        });
+                                        *transform = None;
+                                        string.clear();
                                     }
-                                    *transform = None;
-                                    string.clear();
                                 }
                                 _ => {}
                             }
