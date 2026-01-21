@@ -104,6 +104,9 @@ impl SelectionState {
                 if rect.contains(pos) {
                     self.selection.toggle(*id, shift_pressed);
                     nothing_clicked = false;
+
+                    let layer = LayerId::new(Order::Background, Id::new(id));
+                    ctx.move_to_top(layer);
                 }
             }
         }
