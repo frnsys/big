@@ -7,8 +7,9 @@ pub use egui_phosphor::regular as icons;
 
 enum DragMode {
     Panning,
-    MovingObjects,
+    Moving,
     Resizing,
+    Scaling,
 }
 
 struct App {
@@ -232,7 +233,7 @@ impl eframe::App for App {
                 .map(|(pos, rect)| rect.contains(pos) && pointer_down)
                 .unwrap_or(false);
             if selection_box_clicked {
-                self.drag_mode = DragMode::MovingObjects;
+                self.drag_mode = DragMode::Moving;
             }
         } else {
             let pointer_up = ctx.input(|inp| inp.pointer.primary_released());
@@ -246,11 +247,35 @@ impl eframe::App for App {
             let painter = ctx.layer_painter(layer);
             painter.rect_stroke(rect, 0., Stroke::new(2., Color32::RED), StrokeKind::Outside);
 
-            // Text handle
+            if self.selected.ids.len() == 1
+                && let Some(id) = self.selected.ids.iter().next()
+                && matches!(self.objects[*id].data, ObjectKind::Text { .. })
+            {
+                // Text handle
+                let width = 8.;
+                let height = 16.;
+                let x = rect.right();
+                let y = rect.center().y - height / 2.;
+                let handle = Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, height));
+                painter.rect_filled(handle, 0., Color32::RED);
+
+                if matches!(self.drag_mode, DragMode::Panning) {
+                    let interact_pos = ctx.input(|inp| inp.pointer.interact_pos());
+                    let pointer_down = ctx.input(|inp| inp.pointer.primary_pressed());
+                    let handle_clicked = interact_pos
+                        .map(|pos| handle.contains(pos) && pointer_down)
+                        .unwrap_or(false);
+                    if handle_clicked {
+                        self.drag_mode = DragMode::Resizing;
+                    }
+                }
+            }
+
+            // Scale handle
             let width = 8.;
-            let height = 16.;
+            let height = 8.;
             let x = rect.right();
-            let y = rect.center().y - height / 2.;
+            let y = rect.bottom();
             let handle = Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, height));
             painter.rect_filled(handle, 0., Color32::RED);
 
@@ -261,7 +286,7 @@ impl eframe::App for App {
                     .map(|pos| handle.contains(pos) && pointer_down)
                     .unwrap_or(false);
                 if handle_clicked {
-                    self.drag_mode = DragMode::Resizing;
+                    self.drag_mode = DragMode::Scaling;
                 }
             }
         }
@@ -276,7 +301,7 @@ impl eframe::App for App {
             let dragged = resp.dragged_by(PointerButton::Primary);
             if dragged {
                 match self.drag_mode {
-                    DragMode::MovingObjects => {
+                    DragMode::Moving => {
                         for i in self.selected.ids.iter() {
                             self.objects[*i].transform.translation += resp.drag_delta();
                         }
@@ -288,6 +313,18 @@ impl eframe::App for App {
                                 ObjectKind::Text { text, width, color } => {
                                     *width += resp.drag_delta().x;
                                 }
+                            }
+                        }
+                    }
+                    DragMode::Scaling => {
+                        let pos = ui.input(|inp| inp.pointer.hover_pos());
+                        if let Some(rect) = selection_rect
+                            && let Some(pos) = pos
+                        {
+                            let br = rect.right_bottom();
+                            let ratio = pos.x / br.x;
+                            for i in self.selected.ids.iter() {
+                                self.objects[*i].transform.scaling *= ratio;
                             }
                         }
                     }
