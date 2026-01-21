@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use egui::{
-    Align2, Color32, FontId, Id, Key, LayerId, Order, Painter, PointerButton, Pos2, Rangef, Rect,
-    Response, Sense, Stroke, StrokeKind, TextBuffer, UiBuilder, Vec2, ahash::HashSet,
+    Align, Align2, Color32, FontId, Id, Key, LayerId, Order, Painter, PointerButton, Pos2, Rangef,
+    Rect, Response, Sense, Stroke, StrokeKind, TextBuffer, UiBuilder, Vec2, ahash::HashSet,
     emath::TSTransform,
 };
 pub use egui_phosphor::regular as icons;
@@ -76,6 +76,11 @@ impl Stack {
     }
 }
 
+struct Notification {
+    expires_at: f64,
+    message: String,
+}
+
 struct App {
     transform: TSTransform,
     objects: BTreeMap<Uuid, Object>,
@@ -84,6 +89,7 @@ struct App {
     drag_mode: DragMode,
     state_dirty: StateDirtyTracker,
     stack: Stack,
+    notifications: Vec<Notification>,
 }
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -140,6 +146,7 @@ impl App {
             state_dirty: StateDirtyTracker::default(),
             stack: Stack::new(objects.clone()),
             objects,
+            notifications: vec![],
         }
     }
 }
@@ -157,13 +164,13 @@ enum Tool {
     Bookmark,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 struct Object {
     transform: TSTransform,
     data: ObjectKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 enum ObjectKind {
     // Image(PathBuf), // TODO
     Rect {
@@ -631,7 +638,35 @@ impl eframe::App for App {
                     self.objects = state.clone();
                 }
             }
+
+            if ctx.input(|inp| inp.key_released(Key::S) && inp.modifiers.ctrl) {
+                let duration = 3.0; // seconds
+                let expires_at = ctx.input(|i| i.time) + duration;
+                let ser = serde_yaml::to_string(&self.objects).unwrap();
+                self.notifications.push(Notification {
+                    expires_at,
+                    message: "Saved".into(),
+                });
+                std::fs::write("/tmp/plan.yaml", ser).expect("Unable to write file");
+            }
         }
+
+        egui::Area::new(egui::Id::new("notifications"))
+            .order(Order::Tooltip)
+            .anchor(Align2::RIGHT_BOTTOM, Vec2::new(-8., -8.))
+            .show(ctx, |ui| {
+                ui.set_width(240.);
+                let now = ui.input(|i| i.time);
+                self.notifications.retain(|n| now < n.expires_at);
+                for n in &self.notifications {
+                    ui.with_layout(egui::Layout::right_to_left(Align::Min), |ui| {
+                        ui.label(&n.message);
+                    });
+                }
+                if !self.notifications.is_empty() {
+                    ui.ctx().request_repaint();
+                }
+            });
 
         egui::Area::new(egui::Id::new("tools"))
             .fixed_pos(egui::pos2(32.0, 32.0))
