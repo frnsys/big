@@ -90,6 +90,7 @@ struct App {
     state_dirty: StateDirtyTracker,
     stack: Stack,
     notifications: Vec<Notification>,
+    bookmarks: Vec<Bookmark>,
 }
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -147,6 +148,7 @@ impl App {
             stack: Stack::new(objects.clone()),
             objects,
             notifications: vec![],
+            bookmarks: vec![],
         }
     }
 }
@@ -161,7 +163,15 @@ enum Tool {
     },
     BoxSelect(Option<(Pos2, Pos2)>),
     Placing,
-    Bookmark,
+}
+
+struct Bookmark {
+    label: String,
+    transform: TSTransform,
+}
+
+enum Inspector {
+    Bookmarks,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -490,7 +500,6 @@ impl eframe::App for App {
                 }
             }
             Tool::Placing => todo!(),
-            Tool::Bookmark => todo!(),
         }
 
         // tool interaction
@@ -615,7 +624,6 @@ impl eframe::App for App {
                 });
             }
             Tool::Placing => todo!(),
-            Tool::Bookmark => todo!(),
         }
 
         if !ctx.memory(|mem| mem.focused().is_some()) {
@@ -668,6 +676,54 @@ impl eframe::App for App {
                 }
             });
 
+        egui::Area::new(egui::Id::new("inspector"))
+            .order(Order::Tooltip)
+            .anchor(Align2::RIGHT_TOP, Vec2::new(-8., 8.))
+            .show(ctx, |ui| {
+                egui::Frame::NONE
+                    .fill(Color32::from_black_alpha(128))
+                    .corner_radius(4.)
+                    .inner_margin(6.)
+                    .show(ui, |ui| {
+                        ui.set_width(240.);
+                        ui.label("Bookmarks");
+                        let resp = ui.button((icons::BOOKMARK_SIMPLE, "Add Bookmark"));
+                        if resp.clicked() {
+                            self.bookmarks.push(Bookmark {
+                                label: "new bookmark".into(),
+                                transform: self.transform.clone(),
+                            });
+                            // TODO
+                        }
+
+                        let mut to_delete = None;
+                        for (i, bookmark) in self.bookmarks.iter_mut().enumerate() {
+                            ui.horizontal(|ui| {
+                                let resp = ui.button(icons::FRAME_CORNERS);
+                                let edit = egui::TextEdit::singleline(&mut bookmark.label)
+                                    .desired_width(120.);
+                                ui.add(edit);
+                                if resp.clicked() {
+                                    bookmark.transform = self.transform.clone();
+                                }
+
+                                let resp = ui.button(icons::CROSSHAIR);
+                                if resp.clicked() {
+                                    self.transform = bookmark.transform;
+                                }
+
+                                let resp = ui.button(icons::X);
+                                if resp.clicked() {
+                                    to_delete = Some(i);
+                                }
+                            });
+                        }
+                        if let Some(i) = to_delete {
+                            self.bookmarks.remove(i);
+                        }
+                    });
+            });
+
         egui::Area::new(egui::Id::new("tools"))
             .fixed_pos(egui::pos2(32.0, 32.0))
             .order(Order::Foreground)
@@ -709,14 +765,6 @@ impl eframe::App for App {
                     },
                 )
                 .on_hover_text("Insert Text");
-                select_button(
-                    ui,
-                    icons::BOOKMARK_SIMPLE,
-                    &mut self.tool,
-                    |mode| matches!(mode, Tool::Bookmark),
-                    || Tool::Bookmark,
-                )
-                .on_hover_text("Add Bookmark");
             });
 
         if self.state_dirty.is_dirty {
