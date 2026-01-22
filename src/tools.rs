@@ -33,7 +33,7 @@ pub enum Tool {
 
 impl Tool {
     pub fn allow_selection(&self) -> bool {
-        matches!(self, Tool::Moving)
+        matches!(self, Tool::Moving | Tool::BoxSelect(None))
     }
 }
 
@@ -217,37 +217,37 @@ impl Tool {
             }
             Tool::BoxSelect(rect) => {
                 ctx.input(|inp| {
-                    if inp.pointer.primary_pressed()
-                        && let Some(pos) = inp.pointer.press_origin()
-                    {
-                        *rect = Some((pos, pos))
-                    }
+                    if inp.pointer.is_decidedly_dragging() {
+                        if let Some(pos) = inp.pointer.press_origin() {
+                            *rect = Some((pos, pos))
+                        }
 
-                    if let Some((_, end)) = rect {
-                        if inp.pointer.primary_down()
-                            && let Some(pos) = inp.pointer.latest_pos()
+                        if let Some((_, end)) = rect {
+                            if inp.pointer.primary_down()
+                                && let Some(pos) = inp.pointer.latest_pos()
+                            {
+                                *end = pos;
+                            }
+                        }
+
+                        if inp.pointer.primary_released()
+                            && let Some((start, end)) = rect
                         {
-                            *end = pos;
-                        }
-                    }
+                            let r = Rect::from_two_pos(*start, *end);
+                            let ids: Vec<_> = rects
+                                .iter()
+                                .filter(|(_, rect)| r.contains_rect(*rect))
+                                .map(|(i, _)| *i)
+                                .collect();
 
-                    if inp.pointer.primary_released()
-                        && let Some((start, end)) = rect
-                    {
-                        let r = Rect::from_two_pos(*start, *end);
-                        let ids: Vec<_> = rects
-                            .iter()
-                            .filter(|(_, rect)| r.contains_rect(*rect))
-                            .map(|(i, _)| *i)
-                            .collect();
-
-                        let shift_pressed = inp.modifiers.shift_only();
-                        if shift_pressed {
-                            selection.append(&ids);
-                        } else {
-                            selection.replace(&ids);
+                            let shift_pressed = inp.modifiers.shift_only();
+                            if shift_pressed {
+                                selection.append(&ids);
+                            } else {
+                                selection.replace(&ids);
+                            }
+                            *rect = None;
                         }
-                        *rect = None;
                     }
                 });
             }
