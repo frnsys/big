@@ -17,11 +17,10 @@ use crate::{
     bookmarks::{Bookmark, BookmarksPanel},
     images::TextureCache,
     notifs::Notifications,
+    objects::ObjectKind,
     select::{SelectionContext, SelectionState},
-    stack::Stack,
-    stack::State,
-    tools::ToolContext,
-    tools::{Tool, toolbar},
+    stack::{Stack, State},
+    tools::{Tool, ToolContext, toolbar},
 };
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
@@ -33,6 +32,7 @@ struct SaveData {
 
 pub struct App {
     path: PathBuf,
+    root: PathBuf,
     tool: Tool,
     stack: Stack,
     transform: TSTransform,
@@ -57,6 +57,12 @@ impl App {
             SaveData::default()
         };
 
+        // Get the provided file path as an absolute path,
+        // so we know the parent directory (i.e. the project directory).
+        let cwd = std::env::current_dir().unwrap();
+        let path = cwd.join(path).canonicalize().unwrap();
+        let root = path.parent().expect("has a parent").to_path_buf();
+
         for (_, obj) in &objects {
             if let ObjectKind::Image { source, .. } = &obj.data {
                 TextureCache::request_load(source.as_path(), &cc.egui_ctx);
@@ -65,6 +71,7 @@ impl App {
 
         Self {
             path,
+            root,
             tool: Tool::Moving,
             selection: SelectionState::default(),
             stack: Stack::new(objects.clone()),
@@ -204,6 +211,7 @@ impl eframe::App for App {
             is_dirty |= self.selection.update(ctx, sel_ctx, &mut self.objects);
 
             let tool_ctx = ToolContext {
+                root: &self.root,
                 parent_transform: self.transform,
                 clicked_pos: surface_clicked.then_some(interact_pos).flatten(),
                 rects: &rects,
@@ -237,6 +245,7 @@ impl eframe::App for App {
         toolbar(
             ctx,
             &mut self.tool,
+            &self.root,
             (Align2::LEFT_TOP, Vec2::new(24.0, 24.0)),
         );
 

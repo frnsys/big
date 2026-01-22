@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use egui::{
     Align2, Color32, Context, FontId, Id, LayerId, Order, Pos2, Rect, Stroke, StrokeKind,
@@ -6,10 +9,12 @@ use egui::{
 };
 use egui_file_dialog::FileDialog;
 use egui_phosphor::regular as icons;
+use pathdiff::diff_paths;
 use uuid::Uuid;
 
 use crate::{
     images::TextureCache,
+    notifs::Notifications,
     objects::{Object, ObjectKind},
     select::SelectionState,
     stack::State,
@@ -46,6 +51,7 @@ impl Tool {
 }
 
 pub struct ToolContext<'a> {
+    pub root: &'a Path,
     pub clicked_pos: Option<Pos2>,
     pub parent_transform: TSTransform,
     pub rects: &'a [(Uuid, Rect)],
@@ -54,11 +60,17 @@ pub struct ToolContext<'a> {
 
 impl Tool {
     pub fn update(&mut self, ctx: &Context, mut tctx: ToolContext, objects: &mut State) -> bool {
-        self.visualize(ctx, tctx.parent_transform, objects);
+        self.visualize(ctx, tctx.root, tctx.parent_transform, objects);
         self.interact(ctx, &mut tctx, objects)
     }
 
-    fn visualize(&mut self, ctx: &Context, parent_trans: TSTransform, objects: &mut State) {
+    fn visualize(
+        &mut self,
+        ctx: &Context,
+        root: &Path,
+        parent_trans: TSTransform,
+        objects: &mut State,
+    ) {
         match self {
             Tool::Moving => (),
             Tool::Typing {
@@ -101,6 +113,7 @@ impl Tool {
                     };
 
                     for (i, path) in paths.into_iter().enumerate() {
+                        trans.translation.x += i as f32 * 5.;
                         trans.translation.y += i as f32 * 5.;
                         TextureCache::request_load(&path);
                         objects.insert(
@@ -264,7 +277,7 @@ impl Tool {
     }
 }
 
-pub fn toolbar(ctx: &Context, tool: &mut Tool, (align, offset): (Align2, Vec2)) {
+pub fn toolbar(ctx: &Context, tool: &mut Tool, root: &Path, (align, offset): (Align2, Vec2)) {
     egui::Area::new(egui::Id::new("tools"))
         .anchor(align, offset)
         .order(Order::Middle)
@@ -284,7 +297,7 @@ pub fn toolbar(ctx: &Context, tool: &mut Tool, (align, offset): (Align2, Vec2)) 
                 |mode| matches!(mode, Tool::Placing { .. }),
                 || Tool::Placing {
                     position: None,
-                    file_dialog: image_file_dialog(),
+                    file_dialog: image_file_dialog(root.to_path_buf()),
                 },
             )
             .on_hover_text("Place Images");
@@ -333,7 +346,7 @@ fn select_button<T>(
     resp
 }
 
-fn image_file_dialog() -> FileDialog {
+fn image_file_dialog(root: PathBuf) -> FileDialog {
     FileDialog::new()
         .add_file_filter(
             "Images",
@@ -342,8 +355,10 @@ fn image_file_dialog() -> FileDialog {
                 ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "webp"
             }),
         )
+        .show_left_panel(false)
         .show_devices(false)
         .title_bar(false)
+        .initial_directory(root)
         .default_file_filter("Images")
 }
 
