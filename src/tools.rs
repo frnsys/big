@@ -13,8 +13,6 @@ use pathdiff::diff_paths;
 use uuid::Uuid;
 
 use crate::{
-    content::calculate_hash_and_size,
-    images::TextureCache,
     notifs::Notifications,
     objects::{Object, ObjectKind},
     select::SelectionState,
@@ -119,24 +117,13 @@ impl Tool {
 
                         // Keep paths relative to the project root.
                         if let Some(path) = diff_paths(path, root) {
-                            match calculate_hash_and_size(&path) {
-                                Ok((hash, size)) => {
-                                    TextureCache::request_load(&path, ctx);
-                                    objects.insert(
-                                        Uuid::new_v4(),
-                                        Object {
-                                            transform: trans,
-                                            data: ObjectKind::Image {
-                                                source: path,
-                                                hash,
-                                                size,
-                                            },
-                                        },
-                                    );
+                            match Object::image(path, trans) {
+                                Ok(object) => {
+                                    objects.insert(Uuid::new_v4(), object);
                                 }
-                                Err(err) => Notifications::push(format!(
-                                    "Failed to compute hash or size: {err:?}"
-                                )),
+                                Err(err) => {
+                                    Notifications::push(format!("Failed to create image: {err:?}"))
+                                }
                             }
                         }
                     }
@@ -167,11 +154,8 @@ impl Tool {
                 if let Some(pos) = *clicked_pos {
                     let tpos = parent_transform.inverse().mul_pos(pos);
                     let existing = rects.iter().find_map(|(i, r)| {
-                        (r.contains(pos)
-                            && objects
-                                .get(i)
-                                .is_some_and(|obj| matches!(obj.data, ObjectKind::Text { .. })))
-                        .then_some(i)
+                        (r.contains(pos) && objects.get(i).is_some_and(|obj| obj.is_text()))
+                            .then_some(i)
                     });
                     if let Some(i) = existing
                         && let Some(obj) = objects.get(i)
@@ -221,14 +205,7 @@ impl Tool {
                             if !string.trim().is_empty() {
                                 objects.insert(
                                     Uuid::new_v4(),
-                                    Object {
-                                        transform: trans,
-                                        data: ObjectKind::Text {
-                                            text: string.take(),
-                                            width: *width,
-                                            color: *color,
-                                        },
-                                    },
+                                    Object::text(string.take(), *color, *width, trans),
                                 );
                             }
                         }

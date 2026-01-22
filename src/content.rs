@@ -5,13 +5,7 @@ use std::path::{Path, PathBuf};
 use twox_hash::XxHash3_128;
 use walkdir::WalkDir;
 
-pub fn calculate_hash_and_size(path: &Path) -> std::io::Result<(u128, u64)> {
-    let hash = calculate_hash(path)?;
-    let size = get_file_size(path)?;
-    Ok((hash, size))
-}
-
-fn calculate_hash(path: &Path) -> std::io::Result<u128> {
+pub fn calculate_hash(path: &Path) -> std::io::Result<u128> {
     let file = File::open(path)?;
     let mmap = unsafe { Mmap::map(&file)? };
     let mut hasher = XxHash3_128::default();

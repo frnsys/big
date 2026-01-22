@@ -13,15 +13,17 @@ mod tools;
 
 use std::path::{Path, PathBuf};
 
-use egui::{Align2, Color32, Context, Id, Key, LayerId, Order, Rect, Vec2, emath::TSTransform};
+use egui::{
+    Align2, Color32, Context, Id, Key, LayerId, Order, Pos2, Rect, Vec2, emath::TSTransform,
+};
 use uuid::Uuid;
 
 use crate::{
     bookmarks::{Bookmark, BookmarksPanel},
-    content::{FileInfo, check_and_find_missing_files},
+    content::check_and_find_missing_files,
     images::TextureCache,
     notifs::Notifications,
-    objects::ObjectKind,
+    objects::Object,
     select::{SelectionContext, SelectionState},
     stack::{Stack, State},
     tools::{Tool, ToolContext, toolbar},
@@ -68,24 +70,8 @@ impl App {
         let root = path.parent().expect("has a parent").to_path_buf();
 
         // Check for any missing files and try to find where they've moved to.
-        let files = objects.values_mut().filter_map(|obj| {
-            if let ObjectKind::Image { source, size, hash } = &mut obj.data {
-                Some(FileInfo {
-                    path: source,
-                    hash: *hash,
-                    size: *size,
-                })
-            } else {
-                None
-            }
-        });
+        let files = objects.values_mut().filter_map(Object::file_info);
         check_and_find_missing_files(&root, files);
-
-        for (_, obj) in &objects {
-            if let ObjectKind::Image { source, .. } = &obj.data {
-                TextureCache::request_load(source.as_path(), &cc.egui_ctx);
-            }
-        }
 
         Self {
             path,
@@ -102,21 +88,33 @@ impl App {
     }
 
     fn render_objects(&mut self, ctx: &Context, skip: Option<Uuid>) -> Vec<(Uuid, Rect)> {
+        let screen_rect = ctx.content_rect();
+
         let mut rects = Vec::with_capacity(self.objects.len());
         for (i, obj) in self.objects.iter_mut() {
-            let dont_render = skip.as_ref().is_some_and(|id| id == i);
+            let should_skip = skip.as_ref().is_some_and(|id| id == i);
 
             let trans = self.transform * obj.transform;
 
-            let rect = if !dont_render {
+            // See if the expected rect is in the screen rect.
+            let should_render = if obj.size.is_finite() {
+                let rect = trans.mul_rect(Rect::from_min_size(Pos2::ZERO, obj.size));
+                screen_rect.intersects(rect)
+            } else {
+                // For an infinite size we always render
+                true
+            };
+
+            let rect = if should_render && !should_skip {
                 let layer = LayerId::new(Order::Background, Id::new(i));
                 ctx.set_transform_layer(layer, trans);
                 let mut painter = ctx.layer_painter(layer);
-                obj.data.paint(&mut painter)
+                obj.paint(&mut painter)
             } else {
                 Rect::ZERO
             };
 
+            // Convert to global coordinates
             let rect =
                 Rect::from_min_size(trans.translation.to_pos2(), rect.size() * trans.scaling);
 

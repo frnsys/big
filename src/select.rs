@@ -4,7 +4,7 @@ use egui::{
 };
 use uuid::Uuid;
 
-use crate::{objects::ObjectKind, stack::State};
+use crate::stack::State;
 
 #[derive(Debug, Clone, Copy)]
 enum DragMode {
@@ -224,11 +224,8 @@ impl SelectionState {
                 DragMode::Resizing => {
                     for i in self.selection.ids.iter() {
                         if let Some(obj) = objects.get_mut(i) {
-                            match &mut obj.data {
-                                ObjectKind::Text { width, .. } => {
-                                    *width += sctx.drag_delta.x;
-                                }
-                                _ => {}
+                            if let Some(width) = obj.width_mut() {
+                                *width += sctx.drag_delta.x;
                             }
                         }
                     }

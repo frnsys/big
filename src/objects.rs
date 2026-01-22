@@ -2,16 +2,82 @@ use std::path::PathBuf;
 
 use egui::{Color32, FontId, Painter, Pos2, Rect, Vec2, emath::TSTransform};
 
-use crate::images::TextureCache;
+use crate::{
+    content::{FileInfo, calculate_hash, get_file_size},
+    images::TextureCache,
+};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Object {
     pub transform: TSTransform,
     pub data: ObjectKind,
+    pub size: Vec2,
 }
 impl Object {
     pub fn is_resizable(&self) -> bool {
         matches!(self.data, ObjectKind::Text { .. })
+    }
+
+    pub fn is_text(&self) -> bool {
+        matches!(self.data, ObjectKind::Text { .. })
+    }
+
+    pub fn width_mut(&mut self) -> Option<&mut f32> {
+        match &mut self.data {
+            ObjectKind::Text { width, .. } => Some(width),
+            _ => None,
+        }
+    }
+
+    pub fn file_info(&mut self) -> Option<FileInfo<'_>> {
+        if let ObjectKind::Image { source, size, hash } = &mut self.data {
+            Some(FileInfo {
+                path: source,
+                hash: *hash,
+                size: *size,
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn image(path: PathBuf, trans: TSTransform) -> std::io::Result<Self> {
+        let size = get_file_size(&path)?;
+        let hash = calculate_hash(&path)?;
+        let dims = imagesize::size(&path).map_err(|err| std::io::Error::other(err))?;
+        Ok(Self {
+            transform: trans,
+            size: Vec2::new(dims.width as f32, dims.height as f32),
+            data: ObjectKind::Image {
+                source: path,
+                hash,
+                size,
+            },
+        })
+    }
+
+    pub fn text(text: String, color: Color32, width: f32, trans: TSTransform) -> Self {
+        Self {
+            transform: trans,
+            size: Vec2::INFINITY, // We won't know the size until the text is laid out
+            data: ObjectKind::Text { text, width, color },
+        }
+    }
+
+    pub fn rect(size: Vec2, color: Color32, trans: TSTransform) -> Self {
+        Self {
+            transform: trans,
+            size,
+            data: ObjectKind::Rect { size, color },
+        }
+    }
+
+    pub fn paint(&mut self, painter: &mut Painter) -> Rect {
+        let rect = self.data.paint(painter);
+        if rect != Rect::ZERO {
+            self.size = rect.size();
+        }
+        rect
     }
 }
 
@@ -55,6 +121,7 @@ impl ObjectKind {
                     painter.image(info.id, rect, uv, Color32::WHITE);
                     rect
                 } else {
+                    TextureCache::request_load(source.as_path());
                     Rect::ZERO
                 }
             }
