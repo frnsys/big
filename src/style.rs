@@ -1,4 +1,7 @@
-use egui::{Color32, Context};
+use egui::{
+    Color32, Context, FontFamily,
+    epaint::text::{FontInsert, FontPriority, InsertFontFamily},
+};
 
 pub fn apply_styles(ctx: &Context) {
     replace_fonts(ctx);
@@ -9,24 +12,26 @@ fn replace_fonts(ctx: &Context) {
     let mut fonts = egui::FontDefinitions::default();
     let font_name = "default";
 
-    fonts.font_data.insert(
-        font_name.to_owned(),
-        // std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
-        //     "../assets/DMMono/DMMono-Regular.ttf"
-        // ))),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
-            "../assets/Inter/Inter-Regular.ttf"
-        ))),
-    );
-    fonts.font_data.insert(
-        "phosphor".into(),
+    ctx.add_font(FontInsert::new(
+        "phosphor",
         egui_phosphor::Variant::Regular.font_data().into(),
-    );
+        vec![InsertFontFamily {
+            family: FontFamily::Proportional,
+            priority: FontPriority::Highest,
+        }],
+    ));
 
-    fonts.families.insert(
-        egui::FontFamily::Proportional,
-        vec![font_name.into(), "phosphor".into()],
-    );
+    ctx.add_font(FontInsert::new(
+        font_name,
+        // egui::FontData::from_static(include_bytes!(
+        //     "../assets/DMMono/DMMono-Regular.ttf"
+        // )),
+        egui::FontData::from_static(include_bytes!("../assets/Inter/Inter-Regular.ttf")),
+        vec![InsertFontFamily {
+            family: FontFamily::Proportional,
+            priority: FontPriority::Highest,
+        }],
+    ));
 
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
 
