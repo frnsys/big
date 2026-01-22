@@ -69,6 +69,10 @@ impl App {
         let path = cwd.join(path).normalize_lexically().unwrap();
         let root = path.parent().expect("has a parent").to_path_buf();
 
+        // Set the current dir to the project root
+        // so that relative paths resolve correctly.
+        std::env::set_current_dir(&root).unwrap();
+
         // Check for any missing files and try to find where they've moved to.
         let files = objects.values_mut().filter_map(Object::file_info);
         check_and_find_missing_files(&root, files);
