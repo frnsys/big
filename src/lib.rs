@@ -28,6 +28,7 @@ use crate::{
 struct SaveData {
     objects: State,
     bookmarks: Vec<Bookmark>,
+    transform: TSTransform,
 }
 
 pub struct App {
@@ -46,7 +47,11 @@ impl App {
         style::apply_styles(&cc.egui_ctx);
         egui_extras::install_image_loaders(&cc.egui_ctx);
 
-        let SaveData { objects, bookmarks } = if path.exists() {
+        let SaveData {
+            mut objects,
+            bookmarks,
+            transform,
+        } = if path.exists() {
             load(&path)
         } else {
             SaveData::default()
@@ -55,9 +60,9 @@ impl App {
         Self {
             path,
             tool: Tool::Moving,
-            transform: TSTransform::default(),
             selection: SelectionState::default(),
             stack: Stack::new(objects.clone()),
+            transform,
             objects,
             bookmarks,
             bookmarks_panel: BookmarksPanel::default(),
@@ -131,6 +136,7 @@ impl App {
         let data = SaveData {
             objects: self.objects.clone(),
             bookmarks: self.bookmarks.clone(),
+            transform: self.transform,
         };
         match serde_yaml::to_string(&data) {
             Ok(ser) => match std::fs::write(&self.path, ser) {
