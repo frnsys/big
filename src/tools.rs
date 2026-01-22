@@ -33,7 +33,7 @@ pub enum Tool {
     BoxSelect(Option<(Pos2, Pos2)>),
     Placing {
         position: Option<Pos2>,
-        file_dialog: FileDialog,
+        file_dialog: Box<FileDialog>,
     },
 }
 
@@ -169,7 +169,7 @@ impl Tool {
                         {
                             *transform = Some(obj.transform);
                             string.clear();
-                            string.push_str(&text);
+                            string.push_str(text);
                             *width = *w;
                             *color = *c;
                         }
@@ -183,13 +183,15 @@ impl Tool {
 
                 if let Some(trans) = *transform {
                     let escape = ctx.input(|inp| {
-                        inp.events.iter().any(|ev| match ev {
-                            egui::Event::Key {
-                                key: egui::Key::Escape,
-                                pressed: true,
-                                ..
-                            } => true,
-                            _ => false,
+                        inp.events.iter().any(|ev| {
+                            matches!(
+                                ev,
+                                egui::Event::Key {
+                                    key: egui::Key::Escape,
+                                    pressed: true,
+                                    ..
+                                }
+                            )
                         })
                     });
 
@@ -229,10 +231,11 @@ impl Tool {
 
                         let primary_down = ctx.input(|inp| inp.pointer.primary_down());
                         let latest_pos = ctx.input(|inp| inp.pointer.latest_pos());
-                        if let Some((_, end)) = rect {
-                            if primary_down && let Some(pos) = latest_pos {
-                                *end = pos;
-                            }
+                        if let Some((_, end)) = rect
+                            && primary_down
+                            && let Some(pos) = latest_pos
+                        {
+                            *end = pos;
                         }
 
                         let primary_released = ctx.input(|inp| inp.pointer.primary_released());
@@ -290,7 +293,7 @@ pub fn toolbar(ctx: &Context, tool: &mut Tool, root: &Path, (align, offset): (Al
                 |mode| matches!(mode, Tool::Placing { .. }),
                 || Tool::Placing {
                     position: None,
-                    file_dialog: image_file_dialog(root.to_path_buf()),
+                    file_dialog: Box::new(image_file_dialog(root.to_path_buf())),
                 },
             )
             .on_hover_text("Place Images");

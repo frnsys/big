@@ -97,9 +97,9 @@ pub struct SelectionContext<'a> {
 }
 
 enum DragState {
-    NotDragging,
-    IsDragging,
-    DoneDragging,
+    Idle,
+    Dragging,
+    Done,
 }
 
 impl SelectionState {
@@ -147,13 +147,13 @@ impl SelectionState {
 
             let dragging = self.handle_drag(&sctx, rect, objects);
             match dragging {
-                DragState::NotDragging => false,
-                DragState::IsDragging => {
+                DragState::Idle => false,
+                DragState::Dragging => {
                     // Claim dragging lock
                     ctx.set_dragged_id(Self::id());
                     false
                 }
-                DragState::DoneDragging => {
+                DragState::Done => {
                     // Release dragging lock
                     ctx.stop_dragging();
                     true
@@ -183,13 +183,13 @@ impl SelectionState {
         if let Some(id) = self.selection.single()
             && objects.get(id).is_some_and(|obj| obj.is_resizable())
         {
-            let pressed = render_resize_handle(&painter, rect, pressed_pos);
+            let pressed = render_resize_handle(painter, rect, pressed_pos);
             if pressed && self.drag_mode.is_none() {
                 self.drag_mode = Some(DragMode::Resizing);
             }
         }
 
-        let pressed = render_scale_handle(&painter, rect, pressed_pos);
+        let pressed = render_scale_handle(painter, rect, pressed_pos);
         if pressed && self.drag_mode.is_none() {
             self.drag_mode = Some(DragMode::Scaling);
         }
@@ -201,18 +201,18 @@ impl SelectionState {
         rect: Rect,
         objects: &mut State,
     ) -> DragState {
-        let mut dragging = DragState::NotDragging;
+        let mut dragging = DragState::Idle;
 
         if self.drag_mode.is_none() {
             let selection_box_clicked = sctx.pressed_pos.is_some_and(|pos| rect.contains(pos));
             if selection_box_clicked {
                 self.drag_mode = Some(DragMode::Moving);
-                dragging = DragState::IsDragging;
+                dragging = DragState::Dragging;
             }
         }
 
         if let Some(mode) = self.drag_mode {
-            dragging = DragState::IsDragging;
+            dragging = DragState::Dragging;
             match mode {
                 DragMode::Moving => {
                     for i in self.selection.ids.iter() {
@@ -223,10 +223,10 @@ impl SelectionState {
                 }
                 DragMode::Resizing => {
                     for i in self.selection.ids.iter() {
-                        if let Some(obj) = objects.get_mut(i) {
-                            if let Some(width) = obj.width_mut() {
-                                *width += sctx.drag_delta.x;
-                            }
+                        if let Some(obj) = objects.get_mut(i)
+                            && let Some(width) = obj.width_mut()
+                        {
+                            *width += sctx.drag_delta.x;
                         }
                     }
                 }
@@ -258,7 +258,7 @@ impl SelectionState {
 
         if self.drag_mode.is_some() && sctx.pointer_up {
             self.drag_mode = None;
-            DragState::DoneDragging
+            DragState::Done
         } else {
             dragging
         }

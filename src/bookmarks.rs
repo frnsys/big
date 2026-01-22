@@ -41,7 +41,7 @@ impl BookmarksPanel {
                 if ui.button(("+", icons::BOOKMARK_SIMPLE)).clicked() {
                     bookmarks.push(Bookmark {
                         label: "New bookmark".into(),
-                        transform: current_transform.clone(),
+                        transform: *current_transform,
                     });
                 }
             },
@@ -73,7 +73,7 @@ impl BookmarksPanel {
                     .on_hover_text("Set view")
                     .clicked()
                 {
-                    bookmark.transform = current_transform.clone();
+                    bookmark.transform = *current_transform;
                 }
 
                 if ui.button(icons::X).clicked() {

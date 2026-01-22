@@ -7,7 +7,6 @@ use egui::{Align, Align2, Area, Context, Id, Layout, Order, Vec2, mutex::Mutex};
 
 static MESSAGES: LazyLock<Mutex<Vec<Notification>>> = LazyLock::new(|| Mutex::new(vec![]));
 
-#[derive(Default)]
 pub struct Notifications;
 impl Notifications {
     pub fn push(message: String) {

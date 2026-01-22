@@ -14,7 +14,7 @@ fn replace_fonts(ctx: &Context) {
 
     ctx.add_font(FontInsert::new(
         "phosphor",
-        egui_phosphor::Variant::Regular.font_data().into(),
+        egui_phosphor::Variant::Regular.font_data(),
         vec![InsertFontFamily {
             family: FontFamily::Proportional,
             priority: FontPriority::Highest,

@@ -83,7 +83,7 @@ impl App {
             objects,
             bookmarks,
             bookmarks_panel: BookmarksPanel::default(),
-            notifications: Notifications::default(),
+            notifications: Notifications,
         }
     }
 
@@ -138,16 +138,16 @@ impl App {
             changed = true;
         }
 
-        if ctx.input(|inp| inp.key_released(Key::Z)) {
-            if let Some(state) = self.stack.undo() {
-                self.objects = state.clone();
-            }
+        if ctx.input(|inp| inp.key_released(Key::Z))
+            && let Some(state) = self.stack.undo()
+        {
+            self.objects = state.clone();
         }
 
-        if ctx.input(|inp| inp.key_released(Key::R)) {
-            if let Some(state) = self.stack.redo() {
-                self.objects = state.clone();
-            }
+        if ctx.input(|inp| inp.key_released(Key::R))
+            && let Some(state) = self.stack.redo()
+        {
+            self.objects = state.clone();
         }
 
         if ctx.input(|inp| inp.key_released(Key::Escape)) {
@@ -182,7 +182,8 @@ impl App {
 }
 
 fn load(path: &Path) -> SaveData {
-    let data = std::fs::read_to_string(path).expect(&format!("Unable to read file: {path:?}"));
+    let data =
+        std::fs::read_to_string(path).unwrap_or_else(|_| panic!("Unable to read file: {path:?}"));
     serde_yaml::from_str(&data).unwrap()
 }
 
@@ -265,10 +266,8 @@ impl eframe::App for App {
             (Align2::LEFT_TOP, Vec2::new(24.0, 24.0)),
         );
 
-        if is_dirty {
-            if *self.stack.current() != self.objects {
-                self.stack.push(self.objects.clone());
-            }
+        if is_dirty && *self.stack.current() != self.objects {
+            self.stack.push(self.objects.clone());
         }
     }
 }

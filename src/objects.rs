@@ -47,7 +47,7 @@ impl Object {
     pub fn image(path: PathBuf, trans: TSTransform) -> std::io::Result<Self> {
         let size = get_file_size(&path)?;
         let hash = calculate_hash(&path)?;
-        let dims = imagesize::size(&path).map_err(|err| std::io::Error::other(err))?;
+        let dims = imagesize::size(&path).map_err(std::io::Error::other)?;
         let dims = Vec2::new(dims.width as f32, dims.height as f32);
         Ok(Self {
             transform: trans,

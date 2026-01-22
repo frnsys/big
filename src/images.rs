@@ -141,8 +141,8 @@ impl<'a> ImageRequest<'a> {
 fn load(source: &Path, size: Lod, path: &Path) -> ImageResult<DynamicImage> {
     if !path.exists() {
         match size {
-            Lod::Low => create_thumbnail(source, Lod::side_small() as u32, &path),
-            Lod::Medium => create_thumbnail(source, Lod::side_medium() as u32, &path),
+            Lod::Low => create_thumbnail(source, Lod::side_small() as u32, path),
+            Lod::Medium => create_thumbnail(source, Lod::side_medium() as u32, path),
             Lod::Full => Err(ImageError::IoError(std::io::Error::new(
                 ErrorKind::NotFound,
                 "Source image not found",

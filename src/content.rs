@@ -36,22 +36,20 @@ pub fn check_and_find_missing_files<'a>(
     for entry in WalkDir::new(search_root).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
 
-        if path.is_file() {
-            if let Ok(meta) = entry.metadata() {
-                for (file, found) in &mut missing {
-                    if found.is_some() {
-                        continue;
-                    }
+        if path.is_file()
+            && let Ok(meta) = entry.metadata()
+        {
+            for (file, found) in &mut missing {
+                if found.is_some() {
+                    continue;
+                }
 
-                    if meta.len() == file.size {
-                        if let Ok(current_hash) = calculate_hash(path) {
-                            if current_hash == file.hash {
-                                if let Some(path) = diff_paths(path, search_root) {
-                                    *found = Some(path);
-                                }
-                            }
-                        }
-                    }
+                if meta.len() == file.size
+                    && let Ok(current_hash) = calculate_hash(path)
+                    && current_hash == file.hash
+                    && let Some(path) = diff_paths(path, search_root)
+                {
+                    *found = Some(path);
                 }
             }
         }
