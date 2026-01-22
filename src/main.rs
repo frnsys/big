@@ -22,6 +22,7 @@ use crate::{
     objects::{Object, ObjectKind},
     select::{SelectionContext, SelectionState},
     stack::State,
+    tools::ToolContext,
 };
 
 fn replace_fonts(ctx: &egui::Context) {
@@ -238,14 +239,13 @@ impl eframe::App for App {
             };
             is_dirty |= self.selection.update(ctx, sel_ctx, &mut self.objects);
 
-            is_dirty |= self.tool.update(
-                ctx,
-                surface_clicked,
-                self.transform,
-                &mut self.objects,
-                &mut self.selection,
-                &rects,
-            );
+            let tool_ctx = ToolContext {
+                parent_transform: self.transform,
+                clicked_pos: surface_clicked.then_some(interact_pos).flatten(),
+                rects: &rects,
+                selection: &mut self.selection,
+            };
+            is_dirty |= self.tool.update(ctx, tool_ctx, &mut self.objects);
         });
 
         if !ctx.memory(|mem| mem.focused().is_some()) {

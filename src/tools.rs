@@ -32,37 +32,31 @@ pub enum Tool {
 }
 
 impl Tool {
+    /// Can others modify the selection while this tool is active?
     pub fn allow_selection(&self) -> bool {
         matches!(self, Tool::Moving | Tool::BoxSelect(None))
     }
 
+    /// Can others use drags while this tool is active?
     pub fn allow_dragging(&self) -> bool {
         !matches!(self, Tool::BoxSelect(_))
     }
 }
 
+pub struct ToolContext<'a> {
+    pub clicked_pos: Option<Pos2>,
+    pub parent_transform: TSTransform,
+    pub rects: &'a [(Uuid, Rect)],
+    pub selection: &'a mut SelectionState,
+}
+
 impl Tool {
-    pub fn update(
-        &mut self,
-        ctx: &Context,
-        surface_clicked: bool,
-        global_trans: TSTransform,
-        objects: &mut State,
-        selection: &mut SelectionState,
-        rects: &[(Uuid, Rect)],
-    ) -> bool {
-        self.visualize(ctx, global_trans, objects);
-        self.interact(
-            ctx,
-            surface_clicked,
-            global_trans,
-            objects,
-            selection,
-            rects,
-        )
+    pub fn update(&mut self, ctx: &Context, mut tctx: ToolContext, objects: &mut State) -> bool {
+        self.visualize(ctx, tctx.parent_transform, objects);
+        self.interact(ctx, &mut tctx, objects)
     }
 
-    fn visualize(&mut self, ctx: &Context, global_trans: TSTransform, objects: &mut State) {
+    fn visualize(&mut self, ctx: &Context, parent_trans: TSTransform, objects: &mut State) {
         match self {
             Tool::Moving => (),
             Tool::Typing {
@@ -73,7 +67,7 @@ impl Tool {
                 ..
             } => {
                 if let Some(trans) = transform {
-                    let mut trans = global_trans * *trans;
+                    let mut trans = parent_trans * *trans;
                     trans.translation -= Vec2::new(1., 1.); // Offset to account for textedit border
                     floating_text_input(ctx, trans, string, *width, *color);
                 }
@@ -98,10 +92,10 @@ impl Tool {
                 if let Some(position) = position
                     && let Some(paths) = file_dialog.take_picked_multiple()
                 {
-                    let tpos = global_trans.inverse().mul_pos(*position);
+                    let tpos = parent_trans.inverse().mul_pos(*position);
                     let mut trans = TSTransform {
                         translation: tpos.to_vec2(),
-                        scaling: 1. / global_trans.scaling,
+                        scaling: 1. / parent_trans.scaling,
                     };
 
                     for (i, path) in paths.into_iter().enumerate() {
@@ -120,17 +114,8 @@ impl Tool {
         }
     }
 
-    // TODO reduce the args here?
     /// Return `true` when a change was made
-    fn interact(
-        &mut self,
-        ctx: &Context,
-        surface_clicked: bool,
-        global_trans: TSTransform,
-        objects: &mut State,
-        selection: &mut SelectionState,
-        rects: &[(Uuid, Rect)],
-    ) -> bool {
+    fn interact(&mut self, ctx: &Context, tctx: &mut ToolContext, objects: &mut State) -> bool {
         let mut changed = false;
         match self {
             Tool::Moving => (),
@@ -141,10 +126,15 @@ impl Tool {
                 color,
                 id,
             } => {
-                let interact_pos = ctx.input(|inp| inp.pointer.interact_pos());
+                let ToolContext {
+                    clicked_pos,
+                    parent_transform,
+                    rects,
+                    ..
+                } = tctx;
 
-                if surface_clicked && let Some(pos) = interact_pos {
-                    let tpos = global_trans.inverse().mul_pos(pos);
+                if let Some(pos) = *clicked_pos {
+                    let tpos = parent_transform.inverse().mul_pos(pos);
                     let existing = rects.iter().find_map(|(i, r)| {
                         (r.contains(pos)
                             && objects
@@ -171,7 +161,7 @@ impl Tool {
                     } else {
                         *transform = Some(TSTransform {
                             translation: tpos.to_vec2(),
-                            scaling: 1. / global_trans.scaling,
+                            scaling: 1. / parent_transform.scaling,
                         });
                     }
                 }
@@ -237,7 +227,8 @@ impl Tool {
                             && let Some((start, end)) = rect
                         {
                             let r = Rect::from_two_pos(*start, *end);
-                            let ids: Vec<_> = rects
+                            let ids: Vec<_> = tctx
+                                .rects
                                 .iter()
                                 .filter(|(_, rect)| r.contains_rect(*rect))
                                 .map(|(i, _)| *i)
@@ -245,9 +236,9 @@ impl Tool {
 
                             let shift_pressed = inp.modifiers.shift_only();
                             if shift_pressed {
-                                selection.append(&ids);
+                                tctx.selection.append(&ids);
                             } else {
-                                selection.replace(&ids);
+                                tctx.selection.replace(&ids);
                             }
                             *rect = None;
                         }
@@ -258,10 +249,9 @@ impl Tool {
                 position,
                 file_dialog,
             } => {
-                if surface_clicked {
+                if let Some(pos) = tctx.clicked_pos {
                     file_dialog.pick_multiple();
-                    let interact_pos = ctx.input(|inp| inp.pointer.interact_pos());
-                    *position = interact_pos;
+                    *position = Some(pos);
                 }
             }
         }
