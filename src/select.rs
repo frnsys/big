@@ -34,6 +34,15 @@ impl Selection {
         self.ids.clear();
     }
 
+    /// Returns `Some` only if these is exactly one item selected.
+    pub fn single(&self) -> Option<&Uuid> {
+        if self.ids.len() == 1 {
+            self.ids.iter().next()
+        } else {
+            None
+        }
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &Uuid> {
         self.ids.iter()
     }
@@ -78,7 +87,7 @@ impl std::ops::DerefMut for SelectionState {
 
 pub struct SelectionContext<'a> {
     pub parent_transform: TSTransform,
-    pub drag_delta: Option<Vec2>,
+    pub drag_delta: Vec2,
     pub clicked_pos: Option<Pos2>,
     pub pressed_pos: Option<Pos2>,
     pub hover_pos: Option<Pos2>,
@@ -87,7 +96,17 @@ pub struct SelectionContext<'a> {
     pub rects: &'a [(Uuid, Rect)],
 }
 
+enum DragState {
+    NotDragging,
+    IsDragging,
+    DoneDragging,
+}
+
 impl SelectionState {
+    fn id() -> Id {
+        Id::new("selection-interaction")
+    }
+
     pub fn is_dragging(&self) -> bool {
         self.drag_mode.is_some()
     }
@@ -125,7 +144,21 @@ impl SelectionState {
             let layer = LayerId::new(Order::Background, Id::new("selection"));
             let painter = ctx.layer_painter(layer);
             self.render_selection_box(&painter, rect, objects, sctx.pressed_pos);
-            self.handle_drag(&sctx, rect, objects)
+
+            let dragging = self.handle_drag(&sctx, rect, objects);
+            match dragging {
+                DragState::NotDragging => false,
+                DragState::IsDragging => {
+                    // Claim dragging lock
+                    ctx.set_dragged_id(Self::id());
+                    false
+                }
+                DragState::DoneDragging => {
+                    // Release dragging lock
+                    ctx.stop_dragging();
+                    true
+                }
+            }
         } else {
             false
         }
@@ -145,12 +178,10 @@ impl SelectionState {
             StrokeKind::Outside,
         );
 
-        // TODO this could be cleaned up
-        if self.selection.ids.len() == 1
-            && let Some(id) = self.selection.ids.iter().next()
-            && objects
-                .get(id)
-                .is_some_and(|obj| matches!(obj.data, ObjectKind::Text { .. }))
+        // Only show resize handle if one item is selected,
+        // and it's resizable.
+        if let Some(id) = self.selection.single()
+            && objects.get(id).is_some_and(|obj| obj.is_resizable())
         {
             let pressed = render_resize_handle(&painter, rect, pressed_pos);
             if pressed && self.drag_mode.is_none() {
@@ -164,23 +195,29 @@ impl SelectionState {
         }
     }
 
-    /// Return `true` if stopped dragging
-    fn handle_drag(&mut self, sctx: &SelectionContext, rect: Rect, objects: &mut State) -> bool {
+    fn handle_drag(
+        &mut self,
+        sctx: &SelectionContext,
+        rect: Rect,
+        objects: &mut State,
+    ) -> DragState {
+        let mut dragging = DragState::NotDragging;
+
         if self.drag_mode.is_none() {
             let selection_box_clicked = sctx.pressed_pos.is_some_and(|pos| rect.contains(pos));
             if selection_box_clicked {
                 self.drag_mode = Some(DragMode::Moving);
+                dragging = DragState::IsDragging;
             }
         }
 
-        if let Some(delta) = sctx.drag_delta
-            && let Some(mode) = self.drag_mode
-        {
+        if let Some(mode) = self.drag_mode {
+            dragging = DragState::IsDragging;
             match mode {
                 DragMode::Moving => {
                     for i in self.selection.ids.iter() {
                         if let Some(obj) = objects.get_mut(i) {
-                            obj.transform.translation += delta;
+                            obj.transform.translation += sctx.drag_delta;
                         }
                     }
                 }
@@ -189,7 +226,7 @@ impl SelectionState {
                         if let Some(obj) = objects.get_mut(i) {
                             match &mut obj.data {
                                 ObjectKind::Text { width, .. } => {
-                                    *width += delta.x;
+                                    *width += sctx.drag_delta.x;
                                 }
                                 _ => {}
                             }
@@ -224,9 +261,9 @@ impl SelectionState {
 
         if self.drag_mode.is_some() && sctx.pointer_up {
             self.drag_mode = None;
-            true
+            DragState::DoneDragging
         } else {
-            false
+            dragging
         }
     }
 }

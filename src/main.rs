@@ -215,20 +215,18 @@ impl eframe::App for App {
 
         // For canvas interaction (zooming & panning).
         egui::CentralPanel::default().show(ctx, |ui| {
-            let mut resp = create_surface(ui);
-            let surface_clicked = resp.clicked();
-            let pointer_down = resp.is_pointer_button_down_on();
             let allow_drag = self.tool.allow_dragging() && !self.selection.is_dragging();
-            update_transform(ui, &mut self.transform, &mut resp, allow_drag);
+            let mut resp = create_surface(ui, allow_drag);
+            update_transform(ui, &mut self.transform, &mut resp);
 
-            let dragged = resp.dragged_by(PointerButton::Primary);
-            let delta = dragged.then_some(resp.drag_delta());
+            let surface_clicked = resp.clicked();
             let allow_select = self.tool.allow_selection();
             let interact_pos = ctx.input(|inp| inp.pointer.interact_pos());
+            let pointer_down = resp.is_pointer_button_down_on();
 
             let sel_ctx = SelectionContext {
                 parent_transform: self.transform,
-                drag_delta: delta.map(|delta| delta / self.transform.scaling),
+                drag_delta: ctx.input(|inp| inp.pointer.delta()) / self.transform.scaling,
                 clicked_pos: (surface_clicked && allow_select)
                     .then_some(interact_pos)
                     .flatten(),
@@ -285,10 +283,14 @@ impl eframe::App for App {
     }
 }
 
-fn create_surface(ui: &mut egui::Ui) -> Response {
+fn create_surface(ui: &mut egui::Ui, allow_drag: bool) -> Response {
     let scene_layer_id = LayerId::new(ui.layer_id().order, ui.id().with("scene_area"));
     ui.ctx().set_sublayer(ui.layer_id(), scene_layer_id);
-    let sense = Sense::click_and_drag();
+    let sense = if allow_drag {
+        Sense::click_and_drag()
+    } else {
+        Sense::click()
+    };
 
     let mut local_ui = ui.new_child(UiBuilder::new().layer_id(scene_layer_id).sense(sense));
     local_ui.set_width(local_ui.available_width());
@@ -297,14 +299,9 @@ fn create_surface(ui: &mut egui::Ui) -> Response {
     local_ui.response()
 }
 
-fn update_transform(
-    ui: &mut egui::Ui,
-    transform: &mut TSTransform,
-    drag_resp: &mut Response,
-    allow_drag: bool,
-) {
+fn update_transform(ui: &mut egui::Ui, transform: &mut TSTransform, drag_resp: &mut Response) {
     let dragged = drag_resp.dragged_by(PointerButton::Primary);
-    if allow_drag && dragged {
+    if dragged {
         transform.translation += drag_resp.drag_delta();
         drag_resp.mark_changed();
     }

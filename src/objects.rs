@@ -9,6 +9,11 @@ pub struct Object {
     pub transform: TSTransform,
     pub data: ObjectKind,
 }
+impl Object {
+    pub fn is_resizable(&self) -> bool {
+        matches!(self.data, ObjectKind::Text { .. })
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ObjectKind {

@@ -45,12 +45,4 @@ impl Stack {
     pub fn current(&self) -> &State {
         &self.snapshots[self.position]
     }
-
-    pub fn can_undo(&self) -> bool {
-        self.position > 0
-    }
-
-    pub fn can_redo(&self) -> bool {
-        self.position < self.snapshots.len() - 1
-    }
 }

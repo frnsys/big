@@ -211,23 +211,26 @@ impl Tool {
                 }
             }
             Tool::BoxSelect(rect) => {
-                ctx.input(|inp| {
-                    if inp.pointer.is_decidedly_dragging() {
-                        if let Some(pos) = inp.pointer.press_origin() {
+                let id = Id::new("box-select");
+                let can_drag = !ctx.dragging_something_else(id);
+                if can_drag {
+                    let is_dragging = ctx.input(|inp| inp.pointer.is_decidedly_dragging());
+                    if is_dragging {
+                        let press_origin = ctx.input(|inp| inp.pointer.press_origin());
+                        if let Some(pos) = press_origin {
                             *rect = Some((pos, pos))
                         }
 
+                        let primary_down = ctx.input(|inp| inp.pointer.primary_down());
+                        let latest_pos = ctx.input(|inp| inp.pointer.latest_pos());
                         if let Some((_, end)) = rect {
-                            if inp.pointer.primary_down()
-                                && let Some(pos) = inp.pointer.latest_pos()
-                            {
+                            if primary_down && let Some(pos) = latest_pos {
                                 *end = pos;
                             }
                         }
 
-                        if inp.pointer.primary_released()
-                            && let Some((start, end)) = rect
-                        {
+                        let primary_released = ctx.input(|inp| inp.pointer.primary_released());
+                        if primary_released && let Some((start, end)) = rect {
                             let r = Rect::from_two_pos(*start, *end);
                             let ids: Vec<_> = tctx
                                 .rects
@@ -236,7 +239,7 @@ impl Tool {
                                 .map(|(i, _)| *i)
                                 .collect();
 
-                            let shift_pressed = inp.modifiers.shift_only();
+                            let shift_pressed = ctx.input(|inp| inp.modifiers.shift_only());
                             if shift_pressed {
                                 tctx.selection.append(&ids);
                             } else {
@@ -245,7 +248,7 @@ impl Tool {
                             *rect = None;
                         }
                     }
-                });
+                }
             }
             Tool::Placing {
                 position,
