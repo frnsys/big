@@ -1,9 +1,9 @@
 use bpaf::Bpaf;
 use std::path::PathBuf;
 
-use plan::App;
+use big::App;
 
-/// infinite plan
+/// infinite space
 #[derive(Bpaf, Clone)]
 #[bpaf(options, version)]
 struct Cmd {

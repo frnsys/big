@@ -207,6 +207,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "big"
+version = "0.1.0"
+dependencies = [
+ "bpaf",
+ "eframe",
+ "egui",
+ "egui-file-dialog",
+ "egui-phosphor",
+ "egui_extras",
+ "image",
+ "memmap2",
+ "pathdiff",
+ "serde",
+ "serde_yaml",
+ "twox-hash",
+ "uuid",
+ "walkdir",
+]
+
+[[package]]
 name = "bit-set"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2187,26 +2207,6 @@ name = "pkg-config"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
-
-[[package]]
-name = "plan"
-version = "0.1.0"
-dependencies = [
- "bpaf",
- "eframe",
- "egui",
- "egui-file-dialog",
- "egui-phosphor",
- "egui_extras",
- "image",
- "memmap2",
- "pathdiff",
- "serde",
- "serde_yaml",
- "twox-hash",
- "uuid",
- "walkdir",
-]
 
 [[package]]
 name = "png"
