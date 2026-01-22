@@ -1,17 +1,20 @@
 use egui::{
     Color32, Context, Id, LayerId, Order, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2,
-    ahash::HashSet, emath::TSTransform,
+    ahash::HashSet,
 };
 use uuid::Uuid;
 
 use crate::{objects::ObjectKind, stack::State};
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum DragMode {
     Moving,
     Resizing,
     Scaling,
 }
+
+const SELECTION_BOX_COLOR: Color32 = Color32::from_rgb(0x39, 0xB8, 0x6D);
+const SELECTION_HANDLE_COLOR: Color32 = Color32::from_rgb(0xEB, 0xAE, 0x1C);
 
 #[derive(Default)]
 pub struct Selection {
@@ -25,10 +28,6 @@ impl Selection {
 
     pub fn append(&mut self, ids: &[Uuid]) {
         self.ids.extend(ids);
-    }
-
-    fn remove(&mut self, id: Uuid) {
-        self.ids.remove(&id);
     }
 
     pub fn clear(&mut self) {
@@ -138,7 +137,12 @@ impl SelectionState {
         objects: &State,
         pressed_pos: Option<Pos2>,
     ) {
-        painter.rect_stroke(rect, 0., Stroke::new(2., Color32::RED), StrokeKind::Outside);
+        painter.rect_stroke(
+            rect,
+            0.,
+            Stroke::new(1., SELECTION_BOX_COLOR),
+            StrokeKind::Outside,
+        );
 
         // TODO this could be cleaned up
         if self.selection.ids.len() == 1

@@ -15,6 +15,8 @@ use crate::{
     stack::State,
 };
 
+const SELECTION_BOX_COLOR: Color32 = Color32::from_rgb(0x39, 0xB8, 0x6D);
+
 pub enum Tool {
     Moving,
     Typing {
@@ -79,7 +81,7 @@ impl Tool {
                     painter.rect_stroke(
                         Rect::from_two_pos(*start, *end),
                         0.,
-                        Stroke::new(2., Color32::RED),
+                        Stroke::new(1., SELECTION_BOX_COLOR),
                         StrokeKind::Outside,
                     );
                 }
