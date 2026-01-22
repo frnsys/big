@@ -1,4 +1,4 @@
-use egui::Context;
+use egui::{Align, Align2, Area, Context, Id, Layout, Order, Vec2};
 
 pub struct Notifications {
     context: egui::Context,
@@ -21,23 +21,29 @@ impl Notifications {
         });
     }
 
-    pub fn show(&mut self, ctx: &Context) {
-        egui::Area::new(egui::Id::new("notifications"))
-            .order(egui::Order::Tooltip)
-            .anchor(egui::Align2::RIGHT_BOTTOM, egui::Vec2::new(-8., -8.))
+    fn prune(&mut self) {
+        let now = self.context.input(|i| i.time);
+        self.messages.retain(|n| now < n.expires_at);
+    }
+
+    pub fn show(&mut self, ctx: &Context, (align, offset): (Align2, Vec2)) {
+        self.prune();
+
+        Area::new(Id::new("notifications"))
+            .order(Order::Tooltip)
+            .anchor(align, offset)
             .show(ctx, |ui| {
                 ui.set_width(240.);
-                let now = ui.input(|i| i.time);
-                self.messages.retain(|n| now < n.expires_at);
                 for n in &self.messages {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                    ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                         ui.label(&n.message);
                     });
                 }
-                if !self.messages.is_empty() {
-                    ui.ctx().request_repaint();
-                }
             });
+
+        if !self.messages.is_empty() {
+            ctx.request_repaint();
+        }
     }
 }
 

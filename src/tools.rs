@@ -149,8 +149,7 @@ impl Tool {
                         (r.contains(pos)
                             && objects
                                 .get(i)
-                                .map(|obj| matches!(obj.data, ObjectKind::Text { .. }))
-                                .unwrap_or(false))
+                                .is_some_and(|obj| matches!(obj.data, ObjectKind::Text { .. })))
                         .then_some(i)
                     });
                     if let Some(i) = existing
@@ -270,9 +269,9 @@ impl Tool {
     }
 }
 
-pub fn toolbar(ctx: &Context, tool: &mut Tool) {
+pub fn toolbar(ctx: &Context, tool: &mut Tool, (align, offset): (Align2, Vec2)) {
     egui::Area::new(egui::Id::new("tools"))
-        .fixed_pos(egui::pos2(24.0, 24.0))
+        .anchor(align, offset)
         .order(Order::Middle)
         .show(ctx, |ui| {
             select_button(

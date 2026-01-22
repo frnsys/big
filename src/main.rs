@@ -250,7 +250,8 @@ impl eframe::App for App {
             self.handle_input(ctx);
         }
 
-        self.notifications.show(ctx);
+        self.notifications
+            .show(ctx, (Align2::RIGHT_BOTTOM, Vec2::new(-8., -8.)));
 
         egui::Area::new(egui::Id::new("inspector"))
             .order(Order::Middle)
@@ -267,7 +268,11 @@ impl eframe::App for App {
                     });
             });
 
-        toolbar(ctx, &mut self.tool);
+        toolbar(
+            ctx,
+            &mut self.tool,
+            (Align2::LEFT_TOP, Vec2::new(24.0, 24.0)),
+        );
 
         if is_dirty {
             if *self.stack.current() != self.objects {

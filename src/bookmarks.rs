@@ -1,4 +1,4 @@
-use egui::{Color32, FontFamily, FontId, emath::TSTransform};
+use egui::{FontFamily, FontId, TextEdit, emath::TSTransform};
 use egui_phosphor::regular as icons;
 
 pub struct Bookmark {
@@ -37,8 +37,7 @@ impl BookmarksPanel {
                     self.open = !self.open;
                 }
 
-                let resp = ui.button(("+", icons::BOOKMARK_SIMPLE));
-                if resp.clicked() {
+                if ui.button(("+", icons::BOOKMARK_SIMPLE)).clicked() {
                     bookmarks.push(Bookmark {
                         label: "New bookmark".into(),
                         transform: current_transform.clone(),
@@ -58,21 +57,25 @@ impl BookmarksPanel {
         let mut to_delete = None;
         for (i, bookmark) in bookmarks.iter_mut().enumerate() {
             ui.horizontal(|ui| {
-                let resp = ui.button(icons::CROSSHAIR).on_hover_text("Go to view");
-                if resp.clicked() {
+                if ui
+                    .button(icons::CROSSHAIR)
+                    .on_hover_text("Go to view")
+                    .clicked()
+                {
                     *current_transform = bookmark.transform;
                 }
 
-                let edit = egui::TextEdit::singleline(&mut bookmark.label).desired_width(90.);
-                ui.add(edit);
+                ui.add(TextEdit::singleline(&mut bookmark.label).desired_width(90.));
 
-                let resp = ui.button(icons::CORNERS_OUT).on_hover_text("Set view");
-                if resp.clicked() {
+                if ui
+                    .button(icons::CORNERS_OUT)
+                    .on_hover_text("Set view")
+                    .clicked()
+                {
                     bookmark.transform = current_transform.clone();
                 }
 
-                let resp = ui.button(icons::X);
-                if resp.clicked() {
+                if ui.button(icons::X).clicked() {
                     to_delete = Some(i);
                 }
             });
