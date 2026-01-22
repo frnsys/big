@@ -35,6 +35,10 @@ impl Tool {
     pub fn allow_selection(&self) -> bool {
         matches!(self, Tool::Moving | Tool::BoxSelect(None))
     }
+
+    pub fn allow_dragging(&self) -> bool {
+        !matches!(self, Tool::BoxSelect(_))
+    }
 }
 
 impl Tool {

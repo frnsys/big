@@ -20,7 +20,7 @@ use tools::{Tool, toolbar};
 use crate::{
     bookmarks::{Bookmark, BookmarksPanel},
     objects::{Object, ObjectKind},
-    select::SelectionState,
+    select::{SelectionContext, SelectionState},
     stack::State,
 };
 
@@ -216,21 +216,25 @@ impl eframe::App for App {
         egui::CentralPanel::default().show(ctx, |ui| {
             let mut resp = create_surface(ui);
             let surface_clicked = resp.clicked();
-            let allow_drag =
-                !matches!(self.tool, Tool::BoxSelect(_)) && !self.selection.is_dragging();
+            let allow_drag = self.tool.allow_dragging() && !self.selection.is_dragging();
             update_transform(ui, &mut self.transform, &mut resp, allow_drag);
 
             let dragged = resp.dragged_by(PointerButton::Primary);
             let delta = dragged.then_some(resp.drag_delta());
             let allow_select = self.tool.allow_selection();
-            is_dirty |= self.selection.update(
-                ctx,
-                &rects,
-                delta,
-                &mut self.objects,
-                self.transform,
-                allow_select,
-            );
+            let interact_pos = ctx.input(|inp| inp.pointer.interact_pos());
+
+            let sel_ctx = SelectionContext {
+                drag_delta: delta.map(|delta| delta * self.transform.scaling),
+                clicked_pos: (surface_clicked && allow_select)
+                    .then_some(interact_pos)
+                    .flatten(),
+                hover_pos: ctx.input(|inp| inp.pointer.hover_pos()),
+                pointer_up: ctx.input(|inp| inp.pointer.primary_released()),
+                append_selection: ctx.input(|inp| inp.modifiers.shift_only()),
+                rects: &rects,
+            };
+            is_dirty |= self.selection.update(ctx, sel_ctx, &mut self.objects);
 
             is_dirty |= self.tool.update(
                 ctx,
