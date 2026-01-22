@@ -13,6 +13,7 @@ use pathdiff::diff_paths;
 use uuid::Uuid;
 
 use crate::{
+    content::calculate_hash_and_size,
     images::TextureCache,
     notifs::Notifications,
     objects::{Object, ObjectKind},
@@ -115,14 +116,29 @@ impl Tool {
                     for (i, path) in paths.into_iter().enumerate() {
                         trans.translation.x += i as f32 * 5.;
                         trans.translation.y += i as f32 * 5.;
-                        TextureCache::request_load(&path);
-                        objects.insert(
-                            Uuid::new_v4(),
-                            Object {
-                                transform: trans,
-                                data: ObjectKind::Image { source: path },
-                            },
-                        );
+
+                        // Keep paths relative to the project root.
+                        if let Some(path) = diff_paths(path, root) {
+                            match calculate_hash_and_size(&path) {
+                                Ok((hash, size)) => {
+                                    TextureCache::request_load(&path, ctx);
+                                    objects.insert(
+                                        Uuid::new_v4(),
+                                        Object {
+                                            transform: trans,
+                                            data: ObjectKind::Image {
+                                                source: path,
+                                                hash,
+                                                size,
+                                            },
+                                        },
+                                    );
+                                }
+                                Err(err) => Notifications::push(format!(
+                                    "Failed to compute hash or size: {err:?}"
+                                )),
+                            }
+                        }
                     }
                 }
             }

@@ -28,6 +28,8 @@ pub enum ObjectKind {
     },
     Image {
         source: PathBuf,
+        hash: u128,
+        size: u64,
     },
 }
 impl ObjectKind {
@@ -45,7 +47,7 @@ impl ObjectKind {
                 painter.galley(Pos2::ZERO, galley.clone(), *color);
                 galley.rect
             }
-            ObjectKind::Image { source } => {
+            ObjectKind::Image { source, .. } => {
                 if let Some(info) = TextureCache::get(&source) {
                     let uv = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
                     let rect = Rect::from_min_size(Pos2::ZERO, info.size);

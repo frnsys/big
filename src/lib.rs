@@ -1,5 +1,6 @@
 mod bookmarks;
 mod canvas;
+mod content;
 mod images;
 mod notifs;
 mod objects;
@@ -15,6 +16,7 @@ use uuid::Uuid;
 
 use crate::{
     bookmarks::{Bookmark, BookmarksPanel},
+    content::{FileInfo, check_and_find_missing_files},
     images::TextureCache,
     notifs::Notifications,
     objects::ObjectKind,
@@ -62,6 +64,20 @@ impl App {
         let cwd = std::env::current_dir().unwrap();
         let path = cwd.join(path).canonicalize().unwrap();
         let root = path.parent().expect("has a parent").to_path_buf();
+
+        // Check for any missing files and try to find where they've moved to.
+        let files = objects.values_mut().filter_map(|obj| {
+            if let ObjectKind::Image { source, size, hash } = &mut obj.data {
+                Some(FileInfo {
+                    path: source,
+                    hash: *hash,
+                    size: *size,
+                })
+            } else {
+                None
+            }
+        });
+        check_and_find_missing_files(&root, files);
 
         for (_, obj) in &objects {
             if let ObjectKind::Image { source, .. } = &obj.data {
