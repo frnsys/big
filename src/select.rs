@@ -13,8 +13,8 @@ enum DragMode {
     Scaling,
 }
 
-const SELECTION_BOX_COLOR: Color32 = Color32::from_rgb(0x39, 0xB8, 0x6D);
-const SELECTION_HANDLE_COLOR: Color32 = Color32::from_rgb(0xEB, 0xAE, 0x1C);
+const SELECTION_BOX_COLOR: Color32 = Color32::from_rgb(0xa2, 0x94, 0xff);
+const SELECTION_HANDLE_COLOR: Color32 = Color32::from_rgb(0xeb, 0x40, 0x34);
 
 #[derive(Default)]
 pub struct Selection {
