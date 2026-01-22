@@ -57,6 +57,12 @@ impl App {
             SaveData::default()
         };
 
+        for (_, obj) in &objects {
+            if let ObjectKind::Image { source, .. } = &obj.data {
+                TextureCache::request_load(source.as_path(), &cc.egui_ctx);
+            }
+        }
+
         Self {
             path,
             tool: Tool::Moving,
