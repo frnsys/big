@@ -61,7 +61,7 @@ impl App {
             objects,
             bookmarks,
             bookmarks_panel: BookmarksPanel::default(),
-            notifications: Notifications::new(&cc.egui_ctx),
+            notifications: Notifications::default(),
         }
     }
 
@@ -134,15 +134,13 @@ impl App {
         };
         match serde_yaml::to_string(&data) {
             Ok(ser) => match std::fs::write(&self.path, ser) {
-                Ok(_) => self.notifications.push("Saved".into()),
+                Ok(_) => Notifications::push("Saved".into()),
                 Err(err) => {
-                    self.notifications
-                        .push(format!("Error writing file: {err:?}"));
+                    Notifications::push(format!("Error writing file: {err:?}"));
                 }
             },
             Err(err) => {
-                self.notifications
-                    .push(format!("Error serializing data: {err:?}"));
+                Notifications::push(format!("Error serializing data: {err:?}"));
             }
         }
     }
