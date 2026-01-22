@@ -80,6 +80,7 @@ impl std::ops::DerefMut for SelectionState {
 pub struct SelectionContext<'a> {
     pub drag_delta: Option<Vec2>,
     pub clicked_pos: Option<Pos2>,
+    pub pressed_pos: Option<Pos2>,
     pub hover_pos: Option<Pos2>,
     pub pointer_up: bool,
     pub append_selection: bool,
@@ -123,8 +124,8 @@ impl SelectionState {
         if let Some(rect) = selection_rect {
             let layer = LayerId::new(Order::Background, Id::new("selection"));
             let painter = ctx.layer_painter(layer);
-            self.render_selection_box(&painter, rect, objects, sctx.clicked_pos);
-            self.handle_drag(ctx, &sctx, rect, objects)
+            self.render_selection_box(&painter, rect, objects, sctx.pressed_pos);
+            self.handle_drag(&sctx, rect, objects)
         } else {
             false
         }
@@ -135,7 +136,7 @@ impl SelectionState {
         painter: &Painter,
         rect: Rect,
         objects: &State,
-        clicked_pos: Option<Pos2>,
+        pressed_pos: Option<Pos2>,
     ) {
         painter.rect_stroke(rect, 0., Stroke::new(2., Color32::RED), StrokeKind::Outside);
 
@@ -146,28 +147,22 @@ impl SelectionState {
                 .get(id)
                 .is_some_and(|obj| matches!(obj.data, ObjectKind::Text { .. }))
         {
-            let clicked = render_resize_handle(&painter, rect, clicked_pos);
-            if clicked && self.drag_mode.is_none() {
+            let pressed = render_resize_handle(&painter, rect, pressed_pos);
+            if pressed && self.drag_mode.is_none() {
                 self.drag_mode = Some(DragMode::Resizing);
             }
         }
 
-        let clicked = render_scale_handle(&painter, rect, clicked_pos);
-        if clicked && self.drag_mode.is_none() {
+        let pressed = render_scale_handle(&painter, rect, pressed_pos);
+        if pressed && self.drag_mode.is_none() {
             self.drag_mode = Some(DragMode::Scaling);
         }
     }
 
     /// Return `true` if stopped dragging
-    fn handle_drag(
-        &mut self,
-        ctx: &Context,
-        sctx: &SelectionContext,
-        rect: Rect,
-        objects: &mut State,
-    ) -> bool {
+    fn handle_drag(&mut self, sctx: &SelectionContext, rect: Rect, objects: &mut State) -> bool {
         if self.drag_mode.is_none() {
-            let selection_box_clicked = sctx.clicked_pos.is_some_and(|pos| rect.contains(pos));
+            let selection_box_clicked = sctx.pressed_pos.is_some_and(|pos| rect.contains(pos));
             if selection_box_clicked {
                 self.drag_mode = Some(DragMode::Moving);
             }
@@ -223,29 +218,29 @@ fn render_handle(
     painter: &Painter,
     (x, y): (f32, f32),
     (width, height): (f32, f32),
-    clicked_pos: Option<Pos2>,
+    pressed_pos: Option<Pos2>,
 ) -> bool {
     let handle = Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, height));
-    painter.rect_filled(handle, 0., Color32::RED);
-    clicked_pos.is_some_and(|pos| handle.contains(pos))
+    painter.rect_filled(handle, 0., SELECTION_HANDLE_COLOR);
+    pressed_pos.is_some_and(|pos| handle.contains(pos))
 }
 
 fn render_resize_handle(
     painter: &Painter,
     selection_rect: Rect,
-    clicked_pos: Option<Pos2>,
+    pressed_pos: Option<Pos2>,
 ) -> bool {
     let width = 8.;
     let height = 16.;
     let x = selection_rect.right();
     let y = selection_rect.center().y - height / 2.;
-    render_handle(painter, (x, y), (width, height), clicked_pos)
+    render_handle(painter, (x, y), (width, height), pressed_pos)
 }
 
-fn render_scale_handle(painter: &Painter, selection_rect: Rect, clicked_pos: Option<Pos2>) -> bool {
+fn render_scale_handle(painter: &Painter, selection_rect: Rect, pressed_pos: Option<Pos2>) -> bool {
     let width = 8.;
     let height = 8.;
     let x = selection_rect.right();
     let y = selection_rect.bottom();
-    render_handle(painter, (x, y), (width, height), clicked_pos)
+    render_handle(painter, (x, y), (width, height), pressed_pos)
 }
