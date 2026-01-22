@@ -1,6 +1,7 @@
 use egui::{FontFamily, FontId, TextEdit, emath::TSTransform};
 use egui_phosphor::regular as icons;
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Bookmark {
     label: String,
     transform: TSTransform,

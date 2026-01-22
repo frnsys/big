@@ -8,6 +8,8 @@ mod stack;
 mod style;
 mod tools;
 
+use std::path::{Path, PathBuf};
+
 use egui::{Align2, Color32, Context, Id, Key, LayerId, Order, Rect, Vec2, emath::TSTransform};
 use uuid::Uuid;
 
@@ -15,7 +17,6 @@ use crate::{
     bookmarks::{Bookmark, BookmarksPanel},
     images::TextureCache,
     notifs::Notifications,
-    objects::{Object, ObjectKind},
     select::{SelectionContext, SelectionState},
     stack::Stack,
     stack::State,
@@ -23,7 +24,14 @@ use crate::{
     tools::{Tool, toolbar},
 };
 
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct SaveData {
+    objects: State,
+    bookmarks: Vec<Bookmark>,
+}
+
 pub struct App {
+    path: PathBuf,
     tool: Tool,
     stack: Stack,
     transform: TSTransform,
@@ -34,60 +42,26 @@ pub struct App {
     notifications: Notifications,
 }
 impl App {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, path: PathBuf) -> Self {
         style::apply_styles(&cc.egui_ctx);
         egui_extras::install_image_loaders(&cc.egui_ctx);
 
-        let objects: State = [
-            (
-                Uuid::new_v4(),
-                Object {
-                    transform: TSTransform::default(),
-                    data: ObjectKind::Rect {
-                        size: Vec2::new(100., 100.),
-                        color: Color32::YELLOW,
-                    },
-                },
-            ),
-            (
-                Uuid::new_v4(),
-                Object {
-                    transform: TSTransform {
-                        scaling: 0.5,
-                        translation: Vec2::new(100., 100.),
-                    },
-                    data: ObjectKind::Rect {
-                        size: Vec2::new(100., 100.),
-                        color: Color32::YELLOW,
-                    },
-                },
-            ),
-            (
-                Uuid::new_v4(),
-                Object {
-                    transform: TSTransform {
-                        scaling: 1.0,
-                        translation: Vec2::new(100., 100.),
-                    },
-                    data: ObjectKind::Text {
-                        text: "Hello world this is a long long long".into(),
-                        width: 120.,
-                        color: Color32::BLACK,
-                    },
-                },
-            ),
-        ]
-        .into();
+        let SaveData { objects, bookmarks } = if path.exists() {
+            load(&path)
+        } else {
+            SaveData::default()
+        };
 
         Self {
+            path,
             tool: Tool::Moving,
             transform: TSTransform::default(),
             selection: SelectionState::default(),
             stack: Stack::new(objects.clone()),
             objects,
-            notifications: Notifications::new(&cc.egui_ctx),
-            bookmarks: vec![],
+            bookmarks,
             bookmarks_panel: BookmarksPanel::default(),
+            notifications: Notifications::new(&cc.egui_ctx),
         }
     }
 
@@ -147,13 +121,36 @@ impl App {
         }
 
         if ctx.input(|inp| inp.key_released(Key::S) && inp.modifiers.ctrl) {
-            let ser = serde_yaml::to_string(&self.objects).unwrap();
-            self.notifications.push("Saved".into());
-            std::fs::write("/tmp/plan.yaml", ser).expect("Unable to write file");
+            self.save();
         }
 
         changed
     }
+
+    fn save(&mut self) {
+        let data = SaveData {
+            objects: self.objects.clone(),
+            bookmarks: self.bookmarks.clone(),
+        };
+        match serde_yaml::to_string(&data) {
+            Ok(ser) => match std::fs::write(&self.path, ser) {
+                Ok(_) => self.notifications.push("Saved".into()),
+                Err(err) => {
+                    self.notifications
+                        .push(format!("Error writing file: {err:?}"));
+                }
+            },
+            Err(err) => {
+                self.notifications
+                    .push(format!("Error serializing data: {err:?}"));
+            }
+        }
+    }
+}
+
+fn load(path: &Path) -> SaveData {
+    let data = std::fs::read_to_string(path).expect(&format!("Unable to read file: {path:?}"));
+    serde_yaml::from_str(&data).unwrap()
 }
 
 impl eframe::App for App {
