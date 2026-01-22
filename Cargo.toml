@@ -19,6 +19,7 @@ walkdir = "2.5.0"
 memmap2 = "0.9.9"
 pathdiff = "0.2.3"
 imagesize = "0.14.0"
+dirs = "6.0.0"
 
 [profile.release]
 lto = "fat"

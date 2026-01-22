@@ -4,7 +4,7 @@ use egui::{Color32, FontId, Painter, Pos2, Rect, Vec2, emath::TSTransform};
 
 use crate::{
     content::{FileInfo, calculate_hash, get_file_size},
-    images::TextureCache,
+    images::{ImageRequest, TextureCache},
 };
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -30,7 +30,10 @@ impl Object {
     }
 
     pub fn file_info(&mut self) -> Option<FileInfo<'_>> {
-        if let ObjectKind::Image { source, size, hash } = &mut self.data {
+        if let ObjectKind::Image {
+            source, size, hash, ..
+        } = &mut self.data
+        {
             Some(FileInfo {
                 path: source,
                 hash: *hash,
@@ -45,13 +48,15 @@ impl Object {
         let size = get_file_size(&path)?;
         let hash = calculate_hash(&path)?;
         let dims = imagesize::size(&path).map_err(|err| std::io::Error::other(err))?;
+        let dims = Vec2::new(dims.width as f32, dims.height as f32);
         Ok(Self {
             transform: trans,
-            size: Vec2::new(dims.width as f32, dims.height as f32),
+            size: dims,
             data: ObjectKind::Image {
                 source: path,
                 hash,
                 size,
+                dims,
             },
         })
     }
@@ -96,6 +101,7 @@ pub enum ObjectKind {
         source: PathBuf,
         hash: u128,
         size: u64,
+        dims: Vec2,
     },
 }
 impl ObjectKind {
@@ -113,15 +119,33 @@ impl ObjectKind {
                 painter.galley(Pos2::ZERO, galley.clone(), *color);
                 galley.rect
             }
-            ObjectKind::Image { source, .. } => {
-                if let Some(info) = TextureCache::get(&source) {
+            ObjectKind::Image {
+                source, hash, dims, ..
+            } => {
+                // Get the scaling for this painter
+                // so we know the image's target size.
+                let layer = painter.layer_id();
+                let scale = painter
+                    .ctx()
+                    .layer_transform_to_global(layer)
+                    .unwrap()
+                    .scaling;
+
+                let image = ImageRequest {
+                    source: source.as_path(),
+                    source_size: *dims,
+                    target_size: *dims * scale,
+                    image_hash: *hash,
+                };
+
+                if let Some(info) = TextureCache::get(&image) {
                     let uv = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-                    let rect = Rect::from_min_size(Pos2::ZERO, info.size);
+                    let rect = Rect::from_min_size(Pos2::ZERO, *dims);
                     painter.set_clip_rect(rect);
                     painter.image(info.id, rect, uv, Color32::WHITE);
                     rect
                 } else {
-                    TextureCache::request_load(source.as_path());
+                    TextureCache::request_load(image);
                     Rect::ZERO
                 }
             }
