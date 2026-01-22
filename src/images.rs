@@ -5,6 +5,8 @@ use std::{
 
 use egui::{ColorImage, TextureHandle, TextureId, Vec2, ahash::HashMap, mutex::Mutex};
 
+use crate::notifs::Notifications;
+
 static TEXTURE_CACHE: LazyLock<Mutex<TextureCache>> = LazyLock::new(|| {
     let (tx, rx) = mpsc::channel();
     Mutex::new(TextureCache {
@@ -43,6 +45,7 @@ impl TextureCache {
         while let Ok((path, color_image)) = cache.rx.try_recv() {
             let size = Vec2::new(color_image.width() as f32, color_image.height() as f32);
             let handle = ctx.load_texture(path.to_string_lossy(), color_image, Default::default());
+            ctx.request_repaint();
 
             cache.entries.insert(
                 path,
@@ -56,7 +59,7 @@ impl TextureCache {
     }
 
     /// Submit an image path to be loaded
-    pub fn request_load(path: &Path) {
+    pub fn request_load(path: &Path, ctx: &egui::Context) {
         let mut cache = TEXTURE_CACHE.lock();
         let path_buf = path.to_path_buf();
 
@@ -69,6 +72,7 @@ impl TextureCache {
             .insert(path_buf.clone(), LoadingState::Pending);
         let tx = cache.tx.clone();
 
+        let ctx = ctx.clone();
         std::thread::spawn(move || {
             if let Ok(img) = image::open(&path_buf) {
                 let rgba = img.to_rgba8();
@@ -77,8 +81,10 @@ impl TextureCache {
                     rgba.as_flat_samples().as_slice(),
                 );
                 let _ = tx.send((path_buf, color_image));
+                ctx.request_repaint();
             } else {
                 eprintln!("Failed to load: {path_buf:?}");
+                Notifications::push(format!("Failed to load: {path_buf:?}"));
             }
         });
     }
