@@ -1,3 +1,5 @@
+#![feature(normalize_lexically)]
+
 mod bookmarks;
 mod canvas;
 mod content;
@@ -62,7 +64,7 @@ impl App {
         // Get the provided file path as an absolute path,
         // so we know the parent directory (i.e. the project directory).
         let cwd = std::env::current_dir().unwrap();
-        let path = cwd.join(path).canonicalize().unwrap();
+        let path = cwd.join(path).normalize_lexically().unwrap();
         let root = path.parent().expect("has a parent").to_path_buf();
 
         // Check for any missing files and try to find where they've moved to.
