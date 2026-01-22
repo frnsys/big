@@ -227,6 +227,7 @@ impl eframe::App for App {
             let interact_pos = ctx.input(|inp| inp.pointer.interact_pos());
 
             let sel_ctx = SelectionContext {
+                parent_transform: self.transform,
                 drag_delta: delta.map(|delta| delta / self.transform.scaling),
                 clicked_pos: (surface_clicked && allow_select)
                     .then_some(interact_pos)

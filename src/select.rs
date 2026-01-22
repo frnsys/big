@@ -1,6 +1,6 @@
 use egui::{
     Color32, Context, Id, LayerId, Order, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2,
-    ahash::HashSet,
+    ahash::HashSet, emath::TSTransform,
 };
 use uuid::Uuid;
 
@@ -77,6 +77,7 @@ impl std::ops::DerefMut for SelectionState {
 }
 
 pub struct SelectionContext<'a> {
+    pub parent_transform: TSTransform,
     pub drag_delta: Option<Vec2>,
     pub clicked_pos: Option<Pos2>,
     pub pressed_pos: Option<Pos2>,
@@ -197,11 +198,23 @@ impl SelectionState {
                 }
                 DragMode::Scaling => {
                     if let Some(pos) = sctx.hover_pos {
+                        let tl = rect.left_top();
                         let br = rect.right_bottom();
                         let ratio = pos.x / br.x;
                         for i in self.selection.ids.iter() {
                             if let Some(obj) = objects.get_mut(i) {
                                 obj.transform.scaling *= ratio;
+
+                                // Adjust position so that relative positions to selection
+                                // pivot are maintained.
+                                let world_pos =
+                                    sctx.parent_transform * obj.transform.translation.to_pos2();
+                                let world_pos_ = tl + (world_pos - tl) * ratio;
+                                obj.transform.translation = sctx
+                                    .parent_transform
+                                    .inverse()
+                                    .mul_pos(world_pos_)
+                                    .to_vec2();
                             }
                         }
                     }
