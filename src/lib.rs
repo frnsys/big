@@ -163,12 +163,20 @@ impl App {
             self.tool = Tool::Moving;
         }
 
+        if ctx.input(|inp| inp.key_released(Key::N)) {
+            self.tool = Tool::Moving;
+        }
+
         if ctx.input(|inp| inp.key_released(Key::S)) {
             self.tool = Tool::box_select();
         }
 
         if ctx.input(|inp| inp.key_released(Key::T)) {
             self.tool = Tool::text();
+        }
+
+        if ctx.input(|inp| inp.key_released(Key::V)) {
+            self.tool = Tool::place_image(&self.root);
         }
 
         // Launch selected object, e.g. play video

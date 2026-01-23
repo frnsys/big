@@ -83,6 +83,13 @@ impl Tool {
     pub fn box_select() -> Self {
         Tool::BoxSelect(None)
     }
+
+    pub fn place_image(root: &Path) -> Self {
+        Tool::Placing {
+            position: None,
+            file_dialog: Box::new(image_file_dialog(root.to_path_buf())),
+        }
+    }
 }
 
 pub struct ToolContext<'a> {
@@ -341,10 +348,7 @@ pub fn toolbar(ctx: &Context, tool: &mut Tool, root: &Path, (align, offset): (Al
                 icons::IMAGES,
                 tool,
                 |mode| matches!(mode, Tool::Placing { .. }),
-                || Tool::Placing {
-                    position: None,
-                    file_dialog: Box::new(image_file_dialog(root.to_path_buf())),
-                },
+                || Tool::place_image(root),
             )
             .on_hover_text("Place Images");
             select_button(
