@@ -171,6 +171,10 @@ impl SelectionState {
         objects: &State,
         pressed_pos: Option<Pos2>,
     ) {
+        if rect.area() == 0. {
+            return;
+        }
+
         painter.rect_stroke(
             rect,
             0.,
