@@ -348,7 +348,7 @@ fn image_file_dialog(root: PathBuf) -> FileDialog {
             "Images",
             Arc::new(|p| {
                 let ext = p.extension().unwrap_or_default();
-                ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "webp"
+                ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "webp" || ext == "gif"
             }),
         )
         .show_left_panel(false)

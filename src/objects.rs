@@ -122,14 +122,12 @@ impl ObjectKind {
             ObjectKind::Image {
                 source, hash, dims, ..
             } => {
+                let ctx = painter.ctx();
+
                 // Get the scaling for this painter
                 // so we know the image's target size.
                 let layer = painter.layer_id();
-                let scale = painter
-                    .ctx()
-                    .layer_transform_to_global(layer)
-                    .unwrap()
-                    .scaling;
+                let scale = ctx.layer_transform_to_global(layer).unwrap().scaling;
 
                 let image = ImageRequest {
                     source: source.as_path(),
@@ -138,7 +136,7 @@ impl ObjectKind {
                     image_hash: *hash,
                 };
 
-                if let Some(info) = TextureCache::get(&image) {
+                if let Some(info) = TextureCache::get(ctx, &image) {
                     let uv = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
                     let rect = Rect::from_min_size(Pos2::ZERO, *dims);
                     painter.set_clip_rect(rect);
