@@ -1,10 +1,13 @@
-use std::path::PathBuf;
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use egui::{Color32, FontId, Painter, Pos2, Rect, Vec2, emath::TSTransform};
 
 use crate::{
     content::{FileInfo, calculate_hash, get_file_size},
-    images::{ImageRequest, TextureCache},
+    images::{ImageRequest, TextureCache, image_size, is_video},
 };
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -47,8 +50,7 @@ impl Object {
     pub fn image(path: PathBuf, trans: TSTransform) -> std::io::Result<Self> {
         let size = get_file_size(&path)?;
         let hash = calculate_hash(&path)?;
-        let dims = imagesize::size(&path).map_err(std::io::Error::other)?;
-        let dims = Vec2::new(dims.width as f32, dims.height as f32);
+        let dims = image_size(&path)?;
         Ok(Self {
             transform: trans,
             size: dims,
@@ -83,6 +85,14 @@ impl Object {
             self.size = rect.size();
         }
         rect
+    }
+
+    pub fn launch(&self) {
+        if let ObjectKind::Image { source, .. } = &self.data {
+            if is_video(source) {
+                open_video(source);
+            }
+        }
     }
 }
 
@@ -141,6 +151,14 @@ impl ObjectKind {
                     let rect = Rect::from_min_size(Pos2::ZERO, *dims);
                     painter.set_clip_rect(rect);
                     painter.image(info.id, rect, uv, Color32::WHITE);
+
+                    if is_video(source)
+                        && let Some(ext) = source.extension()
+                    {
+                        let pos = rect.right_bottom();
+                        paint_label(painter, &ext.to_string_lossy(), pos);
+                    }
+
                     rect
                 } else {
                     TextureCache::request_load(image);
@@ -149,4 +167,23 @@ impl ObjectKind {
             }
         }
     }
+}
+
+fn paint_label(painter: &Painter, label: &str, anchor: Pos2) {
+    const FONT: FontId = FontId::proportional(24.);
+    const COLOR: Color32 = Color32::from_gray(64);
+    const WIDTH: f32 = 128.;
+
+    let galley = painter.layout(label.to_string(), FONT, COLOR, WIDTH);
+    let size = galley.rect.size();
+    let pos = anchor - size - Vec2::new(18., 16.);
+
+    let rect = Rect::from_min_size(pos, size).expand2(Vec2::new(5., 1.));
+    painter.rect_filled(rect, 3., Color32::from_black_alpha(196));
+
+    painter.galley(pos, galley.clone(), COLOR);
+}
+
+fn open_video(path: &Path) {
+    let _ = Command::new("mpv").arg(path).spawn();
 }

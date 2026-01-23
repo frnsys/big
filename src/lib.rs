@@ -130,10 +130,12 @@ impl App {
     fn handle_input(&mut self, ctx: &Context) -> bool {
         let mut changed = false;
 
+        // Quit
         if ctx.input(|inp| inp.key_released(Key::Q) && inp.modifiers.ctrl && inp.modifiers.shift) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
 
+        // Delete selection
         if ctx.input(|inp| inp.key_released(Key::X)) {
             for id in self.selection.iter() {
                 self.objects.remove(id);
@@ -142,22 +144,34 @@ impl App {
             changed = true;
         }
 
+        // Undo
         if ctx.input(|inp| inp.key_released(Key::Z))
             && let Some(state) = self.stack.undo()
         {
             self.objects = state.clone();
         }
 
+        // Redo
         if ctx.input(|inp| inp.key_released(Key::R))
             && let Some(state) = self.stack.redo()
         {
             self.objects = state.clone();
         }
 
+        // Reset tool to Moving
         if ctx.input(|inp| inp.key_released(Key::Escape)) {
             self.tool = Tool::Moving;
         }
 
+        // Launch selected object, e.g. play video
+        if ctx.input(|inp| inp.key_released(Key::L))
+            && let Some(id) = self.selection.single()
+            && let Some(obj) = self.objects.get(id)
+        {
+            obj.launch();
+        }
+
+        // Save
         if ctx.input(|inp| inp.key_released(Key::S) && inp.modifiers.ctrl) {
             self.save();
         }

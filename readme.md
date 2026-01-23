@@ -9,3 +9,10 @@ Features include:
 
 ![](assets/shot.webp)
 
+## Setup
+
+Required `ffmpeg` dependencies for creating video thumbnails:
+
+```bash
+zypper in ffmpeg-8-libavutil-devel ffmpeg-8-libavformat-devel ffmpeg-8-libavfilter-devel ffmpeg-8-libavdevice-devel
+```

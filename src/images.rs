@@ -1,4 +1,5 @@
 use std::{
+    ffi::OsStr,
     fs::File,
     io::{BufReader, ErrorKind},
     path::{Path, PathBuf},
@@ -7,7 +8,10 @@ use std::{
 };
 
 use egui::{ColorImage, Context, TextureHandle, TextureId, Vec2, ahash::HashMap, mutex::Mutex};
-use image::{AnimationDecoder, DynamicImage, ImageError, ImageFormat, ImageResult};
+use image::{
+    AnimationDecoder, DynamicImage, ImageBuffer, ImageError, ImageFormat, ImageResult, RgbImage,
+};
+use video_rs::Decoder;
 
 use crate::notifs::Notifications;
 
@@ -28,6 +32,24 @@ static THUMBS_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
     }
     dir
 });
+
+pub fn supported_extension(ext: &OsStr) -> bool {
+    ext == "png"
+        || ext == "jpg"
+        || ext == "jpeg"
+        || ext == "webp"
+        || ext == "gif"
+        || is_video_ext(ext)
+}
+
+fn is_video_ext<S: AsRef<OsStr>>(ext: S) -> bool {
+    let ext = ext.as_ref();
+    ext == "webm" || ext == "mp4" || ext == "mkv"
+}
+
+pub fn is_video(path: &Path) -> bool {
+    path.extension().is_some_and(is_video_ext)
+}
 
 #[derive(Clone)]
 pub struct TextureInfo {
@@ -119,12 +141,13 @@ impl TextureCache {
 
         let size = image.size();
         let source = image.source.to_path_buf();
-        std::thread::spawn(move || {
-            if let Ok(img) = load(&source, size, &path) {
+        std::thread::spawn(move || match load(&source, size, &path) {
+            Ok(img) => {
                 let _ = tx.send((path, img));
-            } else {
-                eprintln!("Failed to load: {path:?}");
-                Notifications::push(format!("Failed to load: {path:?}"));
+            }
+            Err(err) => {
+                eprintln!("Failed to load {path:?}: {err:?}");
+                Notifications::push(format!("Failed to load {path:?}: {err}"));
             }
         });
     }
@@ -164,22 +187,30 @@ impl<'a> ImageRequest<'a> {
 fn load(source: &Path, size: Lod, path: &Path) -> ImageResult<Image<ColorImage>> {
     if !path.exists() {
         match size {
-            Lod::Low => create_thumbnail(source, Lod::side_small() as u32, path)
-                .map(to_color_image)
-                .map(Image::Single),
-            Lod::Medium => create_thumbnail(source, Lod::side_medium() as u32, path)
-                .map(to_color_image)
-                .map(Image::Single),
+            Lod::Low => {
+                let size = Lod::side_small() as u32;
+                create_thumbnail(source, size, path)
+                    .map(to_color_image)
+                    .map(Image::Single)
+            }
+            Lod::Medium => {
+                let size = Lod::side_medium() as u32;
+                create_thumbnail(source, size, path)
+                    .map(to_color_image)
+                    .map(Image::Single)
+            }
             Lod::Full => Err(ImageError::IoError(std::io::Error::new(
                 ErrorKind::NotFound,
                 "Source image not found",
             ))),
         }
     } else {
-        if path.extension().is_some_and(|ext| ext == "gif") {
-            load_gif(path).map(Image::Sequence)
-        } else {
-            image::open(path).map(to_color_image).map(Image::Single)
+        match path.extension().and_then(OsStr::to_str) {
+            Some("gif") => load_gif(path).map(Image::Sequence),
+            Some(ext) if is_video_ext(ext) => create_video_thumbnail(path, None)
+                .map(to_color_image)
+                .map(Image::Single),
+            _ => image::open(path).map(to_color_image).map(Image::Single),
         }
     }
 }
@@ -223,9 +254,17 @@ fn thumbnail_path(source: &Path, hash: u128, size: Lod) -> PathBuf {
 }
 
 fn create_thumbnail(source: &Path, size: u32, path: &Path) -> ImageResult<DynamicImage> {
+    let thumb = match source.extension() {
+        Some(ext) if is_video_ext(ext) => create_video_thumbnail(source, Some(size)),
+        _ => create_image_thumbnail(source, size),
+    }?;
+    thumb.save_with_format(path, ImageFormat::Jpeg)?;
+    Ok(thumb)
+}
+
+fn create_image_thumbnail(source: &Path, size: u32) -> ImageResult<DynamicImage> {
     let img = image::open(source)?;
     let thumb = img.thumbnail(size, size);
-    thumb.save_with_format(path, ImageFormat::Jpeg)?;
     Ok(thumb)
 }
 
@@ -289,4 +328,35 @@ fn to_color_image(img: DynamicImage) -> ColorImage {
         [img.width() as usize, img.height() as usize],
         rgba.as_flat_samples().as_slice(),
     )
+}
+
+fn create_video_thumbnail(path: &Path, size: Option<u32>) -> ImageResult<DynamicImage> {
+    let mut decoder = Decoder::new(path).map_err(std::io::Error::other)?;
+
+    let (width, height) = decoder.size();
+    let frame = decoder.decode_raw().map_err(std::io::Error::other)?;
+    let buf = frame.data(0);
+
+    let img: RgbImage = ImageBuffer::from_raw(width, height, buf.to_vec()).unwrap();
+    let img = DynamicImage::ImageRgb8(img);
+
+    if let Some(size) = size {
+        Ok(img.thumbnail(size, size))
+    } else {
+        Ok(img)
+    }
+}
+
+pub fn image_size(path: &Path) -> std::io::Result<Vec2> {
+    match path.extension() {
+        Some(ext) if is_video_ext(ext) => {
+            let decoder = Decoder::new(path).map_err(std::io::Error::other)?;
+            let (width, height) = decoder.size();
+            Ok(Vec2::new(width as f32, height as f32))
+        }
+        _ => {
+            let size = imagesize::size(&path).map_err(std::io::Error::other)?;
+            Ok(Vec2::new(size.width as f32, size.height as f32))
+        }
+    }
 }

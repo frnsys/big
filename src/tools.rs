@@ -13,6 +13,7 @@ use pathdiff::diff_paths;
 use uuid::Uuid;
 
 use crate::{
+    images::supported_extension,
     notifs::Notifications,
     objects::{Object, ObjectKind},
     select::SelectionState,
@@ -348,7 +349,7 @@ fn image_file_dialog(root: PathBuf) -> FileDialog {
             "Images",
             Arc::new(|p| {
                 let ext = p.extension().unwrap_or_default();
-                ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "webp" || ext == "gif"
+                supported_extension(ext)
             }),
         )
         .show_left_panel(false)
