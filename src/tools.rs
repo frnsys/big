@@ -28,6 +28,7 @@ pub enum Tool {
         transform: Option<TSTransform>,
         string: String,
         width: f32,
+        size: f32,
         color: Color32,
         id: Option<Uuid>,
     },
@@ -47,6 +48,25 @@ impl Tool {
     /// Can others use drags while this tool is active?
     pub fn allow_dragging(&self) -> bool {
         !matches!(self, Tool::BoxSelect(_))
+    }
+
+    pub fn edit_object(id: Uuid, obj: &Object) -> Option<Self> {
+        match &obj.data {
+            ObjectKind::Text {
+                text,
+                size,
+                width,
+                color,
+            } => Some(Tool::Typing {
+                transform: Some(obj.transform),
+                string: text.clone(),
+                width: *width,
+                size: *size,
+                color: *color,
+                id: Some(id),
+            }),
+            _ => None,
+        }
     }
 }
 
@@ -78,12 +98,13 @@ impl Tool {
                 string,
                 width,
                 color,
+                size,
                 ..
             } => {
                 if let Some(trans) = transform {
                     let mut trans = parent_trans * *trans;
                     trans.translation -= Vec2::new(1., 1.); // Offset to account for textedit border
-                    floating_text_input(ctx, trans, string, *width, *color);
+                    floating_text_input(ctx, trans, string, *size, *width, color);
                 }
             }
             Tool::BoxSelect(rect) => {
@@ -143,6 +164,7 @@ impl Tool {
                 string,
                 width,
                 color,
+                size,
                 id,
             } => {
                 let ToolContext {
@@ -166,6 +188,7 @@ impl Tool {
                             text,
                             width: w,
                             color: c,
+                            size: s,
                         } = &obj.data
                         {
                             *transform = Some(obj.transform);
@@ -173,6 +196,7 @@ impl Tool {
                             string.push_str(text);
                             *width = *w;
                             *color = *c;
+                            *size = *s;
                         }
                     } else {
                         *transform = Some(TSTransform {
@@ -200,15 +224,22 @@ impl Tool {
                         if let Some(i) = id
                             && let Some(obj) = objects.get_mut(i)
                         {
-                            if let ObjectKind::Text { text, color: c, .. } = &mut obj.data {
+                            if let ObjectKind::Text {
+                                text,
+                                color: c,
+                                size: s,
+                                ..
+                            } = &mut obj.data
+                            {
                                 *text = string.take();
                                 *c = *color;
+                                *s = *size;
                             }
                         } else {
                             if !string.trim().is_empty() {
                                 objects.insert(
                                     Uuid::new_v4(),
-                                    Object::text(string.take(), *color, *width, trans),
+                                    Object::text(string.take(), *color, *size, *width, trans),
                                 );
                             }
                         }
@@ -316,15 +347,12 @@ pub fn toolbar(ctx: &Context, tool: &mut Tool, root: &Path, (align, offset): (Al
                         transform: None,
                         string: String::new(),
                         width: 180.,
+                        size: 12.,
                         color: Color32::BLACK,
                         id: None,
                     },
                 )
                 .on_hover_text("Insert Text");
-
-                if let Tool::Typing { color, .. } = tool {
-                    ui.color_edit_button_srgba(color);
-                }
             });
         });
 }
@@ -363,8 +391,9 @@ fn floating_text_input(
     ctx: &Context,
     trans: TSTransform,
     text: &mut String,
+    size: f32,
     width: f32,
-    color: Color32,
+    color: &mut Color32,
 ) {
     let area = egui::Area::new(egui::Id::new("text-input"))
         .order(Order::Middle)
@@ -379,17 +408,19 @@ fn floating_text_input(
                 Color32::from_rgba_premultiplied(0x22, 0x22, 0x22, 0xAA),
             ))
             .show(ui, |ui| {
-                const FONT: FontId = FontId::proportional(12.);
+                ui.set_width(width);
+                let font = FontId::proportional(size);
                 let resp = ui.add(
                     egui::TextEdit::multiline(text)
                         .desired_width(width)
                         .margin(0.)
                         .frame(false)
-                        .font(FONT)
-                        .text_color_opt(Some(color))
+                        .font(font)
+                        .text_color_opt(Some(*color))
                         .background_color(Color32::TRANSPARENT),
                 );
                 resp.request_focus();
             });
+        ui.color_edit_button_srgba(color);
     });
 }

@@ -4,7 +4,7 @@ use egui::{
 };
 use uuid::Uuid;
 
-use crate::stack::State;
+use crate::{objects::ObjectKind, stack::State};
 
 #[derive(Debug, Clone, Copy)]
 enum DragMode {
@@ -237,18 +237,26 @@ impl SelectionState {
                         let ratio = pos.x / br.x;
                         for i in self.selection.ids.iter() {
                             if let Some(obj) = objects.get_mut(i) {
-                                obj.transform.scaling *= ratio;
+                                // For text we increase the font size for scaling.
+                                if let ObjectKind::Text { size, width, .. } = &mut obj.data {
+                                    *size *= ratio;
+                                    *width *= ratio;
 
-                                // Adjust position so that relative positions to selection
-                                // pivot are maintained.
-                                let world_pos =
-                                    sctx.parent_transform * obj.transform.translation.to_pos2();
-                                let world_pos_ = tl + (world_pos - tl) * ratio;
-                                obj.transform.translation = sctx
-                                    .parent_transform
-                                    .inverse()
-                                    .mul_pos(world_pos_)
-                                    .to_vec2();
+                                // Everything else has its transform scaled.
+                                } else {
+                                    obj.transform.scaling *= ratio;
+
+                                    // Adjust position so that relative positions to selection
+                                    // pivot are maintained.
+                                    let world_pos =
+                                        sctx.parent_transform * obj.transform.translation.to_pos2();
+                                    let world_pos_ = tl + (world_pos - tl) * ratio;
+                                    obj.transform.translation = sctx
+                                        .parent_transform
+                                        .inverse()
+                                        .mul_pos(world_pos_)
+                                        .to_vec2();
+                                }
                             }
                         }
                     }

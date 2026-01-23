@@ -63,11 +63,16 @@ impl Object {
         })
     }
 
-    pub fn text(text: String, color: Color32, width: f32, trans: TSTransform) -> Self {
+    pub fn text(text: String, color: Color32, size: f32, width: f32, trans: TSTransform) -> Self {
         Self {
             transform: trans,
             size: Vec2::INFINITY, // We won't know the size until the text is laid out
-            data: ObjectKind::Text { text, width, color },
+            data: ObjectKind::Text {
+                text,
+                width,
+                color,
+                size,
+            },
         }
     }
 
@@ -104,6 +109,7 @@ pub enum ObjectKind {
     },
     Text {
         text: String,
+        size: f32,
         width: f32,
         color: Color32,
     },
@@ -122,10 +128,15 @@ impl ObjectKind {
                 painter.rect_filled(rect, 0., *color);
                 rect
             }
-            ObjectKind::Text { text, width, color } => {
-                const FONT: FontId = FontId::proportional(12.);
+            ObjectKind::Text {
+                text,
+                size,
+                width,
+                color,
+            } => {
+                let font = FontId::proportional(*size);
                 // PERF: Could probably cache this and only update when width or text changes.
-                let galley = painter.layout(text.to_string(), FONT, *color, *width);
+                let galley = painter.layout(text.to_string(), font, *color, *width);
                 painter.galley(Pos2::ZERO, galley.clone(), *color);
                 galley.rect
             }
