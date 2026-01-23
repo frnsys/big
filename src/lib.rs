@@ -171,6 +171,15 @@ impl App {
             obj.launch();
         }
 
+        // Edit the currently selected object
+        if ctx.input(|inp| inp.key_released(Key::C))
+            && let Some(id) = self.selection.single()
+            && let Some(obj) = self.objects.get(id)
+            && let Some(tool) = Tool::edit_object(*id, obj)
+        {
+            self.tool = tool;
+        }
+
         // Save
         if ctx.input(|inp| inp.key_released(Key::S) && inp.modifiers.ctrl) {
             self.save();
