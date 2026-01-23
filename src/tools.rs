@@ -348,7 +348,7 @@ pub fn toolbar(ctx: &Context, tool: &mut Tool, root: &Path, (align, offset): (Al
                         string: String::new(),
                         width: 180.,
                         size: 12.,
-                        color: Color32::BLACK,
+                        color: Color32::WHITE,
                         id: None,
                     },
                 )
