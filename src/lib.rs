@@ -167,7 +167,7 @@ impl App {
             self.tool = Tool::Moving;
         }
 
-        if ctx.input(|inp| inp.key_released(Key::S)) {
+        if ctx.input(|inp| inp.key_released(Key::S) && inp.modifiers.is_none()) {
             self.tool = Tool::box_select();
         }
 
