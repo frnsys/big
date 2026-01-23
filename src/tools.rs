@@ -68,6 +68,21 @@ impl Tool {
             _ => None,
         }
     }
+
+    pub fn text() -> Self {
+        Tool::Typing {
+            transform: None,
+            string: String::new(),
+            width: 180.,
+            size: 12.,
+            color: Color32::WHITE,
+            id: None,
+        }
+    }
+
+    pub fn box_select() -> Self {
+        Tool::BoxSelect(None)
+    }
 }
 
 pub struct ToolContext<'a> {
@@ -149,6 +164,9 @@ impl Tool {
                             }
                         }
                     }
+
+                    // Reset to moving
+                    *self = Tool::Moving;
                 }
             }
         }
@@ -334,7 +352,7 @@ pub fn toolbar(ctx: &Context, tool: &mut Tool, root: &Path, (align, offset): (Al
                 icons::SELECTION,
                 tool,
                 |mode| matches!(mode, Tool::BoxSelect(_)),
-                || Tool::BoxSelect(None),
+                Tool::box_select,
             )
             .on_hover_text("Selection");
             ui.horizontal(|ui| {
@@ -343,14 +361,7 @@ pub fn toolbar(ctx: &Context, tool: &mut Tool, root: &Path, (align, offset): (Al
                     icons::CURSOR_TEXT,
                     tool,
                     |mode| matches!(mode, Tool::Typing { .. }),
-                    || Tool::Typing {
-                        transform: None,
-                        string: String::new(),
-                        width: 180.,
-                        size: 12.,
-                        color: Color32::WHITE,
-                        id: None,
-                    },
+                    Tool::text,
                 )
                 .on_hover_text("Insert Text");
             });

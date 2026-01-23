@@ -163,6 +163,14 @@ impl App {
             self.tool = Tool::Moving;
         }
 
+        if ctx.input(|inp| inp.key_released(Key::S)) {
+            self.tool = Tool::box_select();
+        }
+
+        if ctx.input(|inp| inp.key_released(Key::T)) {
+            self.tool = Tool::text();
+        }
+
         // Launch selected object, e.g. play video
         if ctx.input(|inp| inp.key_released(Key::L))
             && let Some(id) = self.selection.single()
