@@ -4,6 +4,7 @@ mod bookmarks;
 mod canvas;
 mod content;
 mod images;
+mod inspect;
 mod notifs;
 mod objects;
 mod select;
@@ -13,15 +14,14 @@ mod tools;
 
 use std::path::{Path, PathBuf};
 
-use egui::{
-    Align2, Color32, Context, Id, Key, LayerId, Order, Pos2, Rect, Vec2, emath::TSTransform,
-};
+use egui::{Align2, Context, Id, Key, LayerId, Order, Pos2, Rect, Vec2, emath::TSTransform};
 use uuid::Uuid;
 
 use crate::{
-    bookmarks::{Bookmark, BookmarksPanel},
+    bookmarks::Bookmark,
     content::check_and_find_missing_files,
     images::TextureCache,
+    inspect::Inspector,
     notifs::Notifications,
     objects::Object,
     select::{SelectionContext, SelectionState},
@@ -44,7 +44,7 @@ pub struct App {
     transform: TSTransform,
     selection: SelectionState,
     bookmarks: Vec<Bookmark>,
-    bookmarks_panel: BookmarksPanel,
+    inspector: Inspector,
     objects: State,
     notifications: Notifications,
 }
@@ -86,7 +86,7 @@ impl App {
             transform,
             objects,
             bookmarks,
-            bookmarks_panel: BookmarksPanel::default(),
+            inspector: Inspector::default(),
             notifications: Notifications,
         }
     }
@@ -287,20 +287,20 @@ impl eframe::App for App {
         self.notifications
             .show(ctx, (Align2::RIGHT_BOTTOM, Vec2::new(-8., -8.)));
 
-        egui::Area::new(egui::Id::new("inspector"))
-            .order(Order::Middle)
-            .anchor(Align2::RIGHT_TOP, Vec2::new(-24., 24.))
-            .show(ctx, |ui| {
-                egui::Frame::NONE
-                    .fill(Color32::from_black_alpha(128))
-                    .corner_radius(4.)
-                    .inner_margin(6.)
-                    .show(ui, |ui| {
-                        ui.set_width(180.);
-                        self.bookmarks_panel
-                            .render(ui, &mut self.bookmarks, &mut self.transform);
-                    });
-            });
+        // TODO we could cache this
+        let labels: Vec<_> = self
+            .objects
+            .values()
+            .filter_map(|obj| obj.text_content().map(|text| (text, obj.world_rect())))
+            .collect();
+
+        self.inspector.render(
+            ctx,
+            &labels,
+            &mut self.bookmarks,
+            &mut self.transform,
+            (Align2::RIGHT_TOP, Vec2::new(-24., 24.)),
+        );
 
         toolbar(
             ctx,

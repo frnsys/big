@@ -25,6 +25,19 @@ impl Object {
         matches!(self.data, ObjectKind::Text { .. })
     }
 
+    pub fn text_content(&self) -> Option<&str> {
+        if let ObjectKind::Text { text, .. } = &self.data {
+            Some(text.as_str())
+        } else {
+            None
+        }
+    }
+
+    pub fn world_rect(&self) -> Rect {
+        let rect = Rect::from_min_size(Pos2::ZERO, self.size);
+        self.transform.mul_rect(rect)
+    }
+
     pub fn width_mut(&mut self) -> Option<&mut f32> {
         match &mut self.data {
             ObjectKind::Text { width, .. } => Some(width),
