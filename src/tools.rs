@@ -342,7 +342,7 @@ pub fn toolbar(ctx: &Context, tool: &mut Tool, root: &Path, (align, offset): (Al
                 |mode| matches!(mode, Tool::Moving),
                 || Tool::Moving,
             )
-            .on_hover_text("Move");
+            .on_hover_text("Move (Esc)");
             select_button(
                 ui,
                 icons::IMAGES,
@@ -350,7 +350,7 @@ pub fn toolbar(ctx: &Context, tool: &mut Tool, root: &Path, (align, offset): (Al
                 |mode| matches!(mode, Tool::Placing { .. }),
                 || Tool::place_image(root),
             )
-            .on_hover_text("Place Images");
+            .on_hover_text("Place Images (V)");
             select_button(
                 ui,
                 icons::SELECTION,
@@ -358,7 +358,7 @@ pub fn toolbar(ctx: &Context, tool: &mut Tool, root: &Path, (align, offset): (Al
                 |mode| matches!(mode, Tool::BoxSelect(_)),
                 Tool::box_select,
             )
-            .on_hover_text("Selection");
+            .on_hover_text("Selection (S)");
             ui.horizontal(|ui| {
                 select_button(
                     ui,
@@ -367,7 +367,7 @@ pub fn toolbar(ctx: &Context, tool: &mut Tool, root: &Path, (align, offset): (Al
                     |mode| matches!(mode, Tool::Typing { .. }),
                     Tool::text,
                 )
-                .on_hover_text("Insert Text");
+                .on_hover_text("Insert Text (T)");
             });
         });
 }
