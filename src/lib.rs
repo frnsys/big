@@ -7,6 +7,7 @@ mod images;
 mod inspect;
 mod notifs;
 mod objects;
+mod operators;
 mod select;
 mod stack;
 mod style;
@@ -14,7 +15,10 @@ mod tools;
 
 use std::path::{Path, PathBuf};
 
-use egui::{Align2, Context, Id, Key, LayerId, Order, Pos2, Rect, Vec2, emath::TSTransform};
+use egui::{
+    Align2, Color32, Context, FontFamily, FontId, Id, Key, LayerId, Margin, Order, Pos2, Rect,
+    Vec2, emath::TSTransform,
+};
 use uuid::Uuid;
 
 use crate::{
@@ -24,7 +28,7 @@ use crate::{
     inspect::Inspector,
     notifs::Notifications,
     objects::Object,
-    select::{SelectionContext, SelectionState},
+    select::{Selection, SelectionContext, SelectionState},
     stack::{Stack, State},
     tools::{Tool, ToolContext, toolbar},
 };
@@ -179,6 +183,38 @@ impl App {
             self.tool = Tool::place_image(&self.root);
         }
 
+        if ctx.input(|inp| inp.key_released(Key::B) && inp.modifiers.is_none()) {
+            let sizes: Vec<_> = self
+                .selection
+                .iter()
+                .filter_map(|id| self.objects.get(id))
+                .map(|obj| obj.world_size())
+                .collect();
+
+            let scales = operators::normalize_sizes(&sizes);
+            for (i, id) in self.selection.iter().enumerate() {
+                if let Some(obj) = self.objects.get_mut(id) {
+                    obj.transform.scaling *= scales[i];
+                }
+            }
+        }
+
+        if ctx.input(|inp| inp.key_released(Key::B) && inp.modifiers.shift_only()) {
+            let sizes: Vec<_> = self
+                .selection
+                .iter()
+                .filter_map(|id| self.objects.get(id))
+                .map(|obj| obj.world_size())
+                .collect();
+
+            let pos = operators::pack_rects(&sizes);
+            for (i, id) in self.selection.iter().enumerate() {
+                if let Some(obj) = self.objects.get_mut(id) {
+                    obj.transform.translation = pos[i];
+                }
+            }
+        }
+
         // Launch selected object, e.g. play video
         if ctx.input(|inp| inp.key_released(Key::L))
             && let Some(id) = self.selection.single()
@@ -309,8 +345,32 @@ impl eframe::App for App {
             (Align2::LEFT_TOP, Vec2::new(24.0, 24.0)),
         );
 
+        help(ctx, &self.selection);
+
         if is_dirty && *self.stack.current() != self.objects {
             self.stack.push(self.objects.clone());
         }
+    }
+}
+
+fn help(ctx: &Context, selection: &Selection) {
+    if selection.has_many() {
+        egui::Area::new(egui::Id::new("help"))
+            .order(Order::Middle)
+            .anchor(Align2::LEFT_BOTTOM, Vec2::new(24., -24.))
+            .show(ctx, |ui| {
+                egui::Frame::NONE
+                    .fill(Color32::from_black_alpha(196))
+                    .corner_radius(2.)
+                    .inner_margin(Margin::symmetric(6, 4))
+                    .show(ui, |ui| {
+                        ui.style_mut().override_font_id =
+                            Some(FontId::new(11., FontFamily::Proportional));
+                        ui.horizontal(|ui| {
+                            ui.label("b: Normalize sizes");
+                            ui.label("B: Binpack");
+                        });
+                    });
+            });
     }
 }

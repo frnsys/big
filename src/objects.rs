@@ -38,6 +38,10 @@ impl Object {
         self.transform.mul_rect(rect)
     }
 
+    pub fn world_size(&self) -> Vec2 {
+        self.size * self.transform.scaling
+    }
+
     pub fn width_mut(&mut self) -> Option<&mut f32> {
         match &mut self.data {
             ObjectKind::Text { width, .. } => Some(width),

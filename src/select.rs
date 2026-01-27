@@ -34,6 +34,10 @@ impl Selection {
         self.ids.clear();
     }
 
+    pub fn has_many(&self) -> bool {
+        self.ids.len() > 1
+    }
+
     /// Returns `Some` only if these is exactly one item selected.
     pub fn single(&self) -> Option<&Uuid> {
         if self.ids.len() == 1 {
