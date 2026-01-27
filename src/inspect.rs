@@ -111,8 +111,12 @@ impl Inspector {
                     .on_hover_text("Go to view")
                     .clicked()
                 {
-                    let zoom = 1.;
+                    let padding = 0.1; // % of screen
                     let screen_rect = ui.ctx().content_rect();
+                    let scale_x = screen_rect.width() / rect.width();
+                    let scale_y = screen_rect.height() / rect.height();
+                    let zoom = scale_x.min(scale_y) * padding;
+
                     let screen_center = screen_rect.center().to_vec2();
                     let world_center = rect.center().to_vec2();
                     *current_transform = TSTransform {
