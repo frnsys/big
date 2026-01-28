@@ -1,5 +1,5 @@
+use binpack2d::{BinType, Dimension, bin_new};
 use egui::Vec2;
-use guillotiere::{AtlasAllocator, size2};
 
 /// Return scaling factors to make a set of sizes more similar.
 pub fn normalize_sizes(sizes: &[Vec2]) -> Vec<f32> {
@@ -20,29 +20,30 @@ pub fn normalize_sizes(sizes: &[Vec2]) -> Vec<f32> {
 }
 
 pub fn pack_rects(sizes: &[Vec2]) -> Vec<Vec2> {
-    // Pack until they all fit
     let total_area: f32 = sizes.iter().map(|s| s.x * s.y).sum();
     let mut side = total_area.sqrt() as i32;
 
+    let items: Vec<_> = sizes
+        .iter()
+        .enumerate()
+        .map(|(i, size)| {
+            Dimension::with_id(i as isize, size.x.ceil() as i32, size.y.ceil() as i32, 5)
+        })
+        .collect();
+
+    // Pack until they all fit
     loop {
-        let mut allocator = AtlasAllocator::new(size2(side, side));
-        let mut results = Vec::new();
-        let mut success = true;
+        // let mut bin = bin_new(BinType::Guillotine, side, side);
+        let mut bin = bin_new(BinType::MaxRects, side, side);
 
-        for size in sizes {
-            let alloc_size = size2(size.x.ceil() as i32, size.y.ceil() as i32);
+        let (mut inserted, rejected) = bin.insert_list(&items);
 
-            if let Some(allocation) = allocator.allocate(alloc_size) {
-                let min = allocation.rectangle.min;
-                results.push(Vec2::new(min.x as f32, min.y as f32));
-            } else {
-                success = false;
-                break;
-            }
-        }
-
-        if success {
-            return results;
+        if rejected.is_empty() {
+            inserted.sort_by_key(|rect| rect.id());
+            return inserted
+                .into_iter()
+                .map(|rect| Vec2::new(rect.x() as f32, rect.y() as f32))
+                .collect();
         }
 
         // Try again with more area
