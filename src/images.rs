@@ -9,7 +9,8 @@ use std::{
 
 use egui::{ColorImage, Context, TextureHandle, TextureId, Vec2, ahash::HashMap, mutex::Mutex};
 use image::{
-    AnimationDecoder, DynamicImage, ImageBuffer, ImageError, ImageFormat, ImageResult, RgbImage,
+    AnimationDecoder, DynamicImage, ImageBuffer, ImageError, ImageFormat, ImageReader, ImageResult,
+    RgbImage,
 };
 use video_rs::Decoder;
 
@@ -210,7 +211,11 @@ fn load(source: &Path, size: Lod, path: &Path) -> ImageResult<Image<ColorImage>>
             Some(ext) if is_video_ext(ext) => create_video_thumbnail(path, None)
                 .map(to_color_image)
                 .map(Image::Single),
-            _ => image::open(path).map(to_color_image).map(Image::Single),
+            _ => ImageReader::open(path)?
+                .with_guessed_format()?
+                .decode()
+                .map(to_color_image)
+                .map(Image::Single),
         }
     }
 }
@@ -263,7 +268,7 @@ fn create_thumbnail(source: &Path, size: u32, path: &Path) -> ImageResult<Dynami
 }
 
 fn create_image_thumbnail(source: &Path, size: u32) -> ImageResult<DynamicImage> {
-    let img = image::open(source)?;
+    let img = ImageReader::open(source)?.with_guessed_format()?.decode()?;
     let thumb = img.thumbnail(size, size);
     Ok(thumb)
 }
