@@ -207,10 +207,21 @@ impl App {
                 .map(|obj| obj.world_size())
                 .collect();
 
+            let mut rect = Rect::NOTHING;
+            for r in self
+                .selection
+                .iter()
+                .filter_map(|id| self.objects.get(id))
+                .map(|obj| obj.world_rect())
+            {
+                rect |= r;
+            }
+            let offset = rect.left_top();
+
             let pos = operators::pack_rects(&sizes);
             for (i, id) in self.selection.iter().enumerate() {
                 if let Some(obj) = self.objects.get_mut(id) {
-                    obj.transform.translation = pos[i];
+                    obj.transform.translation = offset.to_vec2() + pos[i];
                 }
             }
         }
