@@ -23,11 +23,17 @@ pub fn pack_rects(sizes: &[Vec2]) -> Vec<Vec2> {
     let total_area: f32 = sizes.iter().map(|s| s.x * s.y).sum();
     let mut side = total_area.sqrt() as i32;
 
+    let padding = 10;
     let items: Vec<_> = sizes
         .iter()
         .enumerate()
         .map(|(i, size)| {
-            Dimension::with_id(i as isize, size.x.ceil() as i32, size.y.ceil() as i32, 5)
+            Dimension::with_id(
+                i as isize,
+                size.x.ceil() as i32,
+                size.y.ceil() as i32,
+                padding,
+            )
         })
         .collect();
 
