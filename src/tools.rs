@@ -102,7 +102,13 @@ pub struct ToolContext<'a> {
 
 impl Tool {
     pub fn update(&mut self, ctx: &Context, mut tctx: ToolContext, objects: &mut State) -> bool {
-        self.visualize(ctx, tctx.root, tctx.parent_transform, objects);
+        self.visualize(
+            ctx,
+            tctx.root,
+            tctx.parent_transform,
+            objects,
+            tctx.selection,
+        );
         self.interact(ctx, &mut tctx, objects)
     }
 
@@ -112,6 +118,7 @@ impl Tool {
         root: &Path,
         parent_trans: TSTransform,
         objects: &mut State,
+        selection: &mut SelectionState,
     ) {
         match self {
             Tool::Moving => (),
@@ -155,6 +162,7 @@ impl Tool {
                         scaling: 1. / parent_trans.scaling,
                     };
 
+                    selection.clear();
                     for (i, path) in paths.into_iter().enumerate() {
                         trans.translation.x += i as f32 * 5.;
                         trans.translation.y += i as f32 * 5.;
@@ -163,7 +171,9 @@ impl Tool {
                         if let Some(path) = diff_paths(path, root) {
                             match Object::image(path, trans) {
                                 Ok(object) => {
-                                    objects.insert(Uuid::new_v4(), object);
+                                    let id = Uuid::new_v4();
+                                    objects.insert(id, object);
+                                    selection.append(&[id]);
                                 }
                                 Err(err) => {
                                     Notifications::push(format!("Failed to create image: {err:?}"))
