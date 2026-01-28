@@ -4,8 +4,8 @@ use std::{
 };
 
 use egui::{
-    Align2, Color32, Context, FontId, Id, LayerId, Order, Pos2, Rect, Stroke, StrokeKind,
-    TextBuffer, Vec2, emath::TSTransform,
+    Align2, Color32, Context, FontId, Order, Pos2, Rect, Stroke, TextBuffer, Vec2,
+    emath::TSTransform,
 };
 use egui_file_dialog::FileDialog;
 use egui_phosphor::regular as icons;
@@ -20,8 +20,6 @@ use crate::{
     stack::State,
 };
 
-const SELECTION_BOX_COLOR: Color32 = Color32::from_rgb(0x39, 0xB8, 0x6D);
-
 pub enum Tool {
     Moving,
     Typing {
@@ -32,7 +30,6 @@ pub enum Tool {
         color: Color32,
         id: Option<Uuid>,
     },
-    BoxSelect(Option<(Pos2, Pos2)>),
     Placing {
         position: Option<Pos2>,
         file_dialog: Box<FileDialog>,
@@ -42,12 +39,7 @@ pub enum Tool {
 impl Tool {
     /// Can others modify the selection while this tool is active?
     pub fn allow_selection(&self) -> bool {
-        matches!(self, Tool::Moving | Tool::BoxSelect(None))
-    }
-
-    /// Can others use drags while this tool is active?
-    pub fn allow_dragging(&self) -> bool {
-        !matches!(self, Tool::BoxSelect(_))
+        matches!(self, Tool::Moving)
     }
 
     pub fn edit_object(id: Uuid, obj: &Object) -> Option<Self> {
@@ -78,10 +70,6 @@ impl Tool {
             color: Color32::WHITE,
             id: None,
         }
-    }
-
-    pub fn box_select() -> Self {
-        Tool::BoxSelect(None)
     }
 
     pub fn place_image(root: &Path) -> Self {
@@ -134,18 +122,6 @@ impl Tool {
                     let mut trans = parent_trans * *trans;
                     trans.translation -= Vec2::new(1., 1.); // Offset to account for textedit border
                     floating_text_input(ctx, trans, string, *size, *width, color);
-                }
-            }
-            Tool::BoxSelect(rect) => {
-                if let Some((start, end)) = rect {
-                    let layer = LayerId::new(Order::Background, Id::new("selection-box"));
-                    let painter = ctx.layer_painter(layer);
-                    painter.rect_stroke(
-                        Rect::from_two_pos(*start, *end),
-                        0.,
-                        Stroke::new(1., SELECTION_BOX_COLOR),
-                        StrokeKind::Outside,
-                    );
                 }
             }
             Tool::Placing {
@@ -285,47 +261,6 @@ impl Tool {
                     }
                 }
             }
-            Tool::BoxSelect(rect) => {
-                let id = Id::new("box-select");
-                let can_drag = !ctx.dragging_something_else(id);
-                if can_drag {
-                    let is_dragging = ctx.input(|inp| inp.pointer.is_decidedly_dragging());
-                    if is_dragging {
-                        let press_origin = ctx.input(|inp| inp.pointer.press_origin());
-                        if let Some(pos) = press_origin {
-                            *rect = Some((pos, pos))
-                        }
-
-                        let primary_down = ctx.input(|inp| inp.pointer.primary_down());
-                        let latest_pos = ctx.input(|inp| inp.pointer.latest_pos());
-                        if let Some((_, end)) = rect
-                            && primary_down
-                            && let Some(pos) = latest_pos
-                        {
-                            *end = pos;
-                        }
-
-                        let primary_released = ctx.input(|inp| inp.pointer.primary_released());
-                        if primary_released && let Some((start, end)) = rect {
-                            let r = Rect::from_two_pos(*start, *end);
-                            let ids: Vec<_> = tctx
-                                .rects
-                                .iter()
-                                .filter(|(_, rect)| r.contains_rect(*rect))
-                                .map(|(i, _)| *i)
-                                .collect();
-
-                            let shift_pressed = ctx.input(|inp| inp.modifiers.shift_only());
-                            if shift_pressed {
-                                tctx.selection.append(&ids);
-                            } else {
-                                tctx.selection.replace(&ids);
-                            }
-                            *rect = None;
-                        }
-                    }
-                }
-            }
             Tool::Placing {
                 position,
                 file_dialog,
@@ -361,14 +296,6 @@ pub fn toolbar(ctx: &Context, tool: &mut Tool, root: &Path, (align, offset): (Al
                 || Tool::place_image(root),
             )
             .on_hover_text("Place Images (V)");
-            select_button(
-                ui,
-                icons::SELECTION,
-                tool,
-                |mode| matches!(mode, Tool::BoxSelect(_)),
-                Tool::box_select,
-            )
-            .on_hover_text("Selection (S)");
             ui.horizontal(|ui| {
                 select_button(
                     ui,

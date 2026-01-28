@@ -13,6 +13,7 @@ enum DragMode {
     Scaling,
 }
 
+const SELECT_BOX_COLOR: Color32 = Color32::from_rgb(0x39, 0xB8, 0x6D);
 const SELECTION_BOX_COLOR: Color32 = Color32::from_rgb(0xa2, 0x94, 0xff);
 const SELECTION_HANDLE_COLOR: Color32 = Color32::from_rgb(0xeb, 0x40, 0x34);
 
@@ -111,10 +112,6 @@ impl SelectionState {
         Id::new("selection-interaction")
     }
 
-    pub fn is_dragging(&self) -> bool {
-        self.drag_mode.is_some()
-    }
-
     /// Return `true` if stopped dragging
     pub fn update(&mut self, ctx: &Context, sctx: SelectionContext, objects: &mut State) -> bool {
         let mut nothing_clicked = true;
@@ -148,6 +145,10 @@ impl SelectionState {
             let layer = LayerId::new(Order::Background, Id::new("selection"));
             let painter = ctx.layer_painter(layer);
             self.render_selection_box(&painter, rect, objects, sctx.pressed_pos);
+
+            if ctx.dragging_something_else(Self::id()) {
+                return false;
+            }
 
             let dragging = self.handle_drag(&sctx, rect, objects);
             match dragging {
@@ -310,4 +311,56 @@ fn render_scale_handle(painter: &Painter, selection_rect: Rect, pressed_pos: Opt
     let x = selection_rect.right();
     let y = selection_rect.bottom();
     render_handle(painter, (x, y), (width, height), pressed_pos)
+}
+
+pub fn handle_box_select(ctx: &Context, rects: &[(Uuid, Rect)], selection: &mut SelectionState) {
+    let id = Id::new("box-select");
+    if ctx.dragging_something_else(id) {
+        return;
+    }
+
+    let right_down = ctx.input(|inp| inp.pointer.secondary_down());
+    let press_origin = ctx.input(|inp| inp.pointer.press_origin());
+    let latest_pos = ctx.input(|inp| inp.pointer.latest_pos());
+    let released = ctx.input(|inp| inp.pointer.secondary_released());
+
+    if released {
+        let rect: Option<Rect> = ctx.memory(|mem| mem.data.get_temp(id));
+        if let Some(r) = rect {
+            let ids: Vec<_> = rects
+                .iter()
+                .filter(|(_, rect)| r.contains_rect(*rect))
+                .map(|(i, _)| *i)
+                .collect();
+
+            selection.replace(&ids);
+            let shift_pressed = ctx.input(|inp| inp.modifiers.shift_only());
+            if shift_pressed {
+                selection.append(&ids);
+            } else {
+                selection.replace(&ids);
+            }
+        }
+
+        // Release dragging lock
+        ctx.stop_dragging();
+    }
+    if right_down
+        && let Some(start) = press_origin
+        && let Some(end) = latest_pos
+    {
+        // Claim dragging lock
+        ctx.set_dragged_id(id);
+
+        let rect = Rect::from_two_pos(start, end);
+        let layer = LayerId::new(Order::Background, Id::new("selection-box"));
+        let painter = ctx.layer_painter(layer);
+        painter.rect_stroke(
+            rect,
+            0.,
+            Stroke::new(1., SELECT_BOX_COLOR),
+            StrokeKind::Outside,
+        );
+        ctx.memory_mut(|mem| mem.data.insert_temp(id, rect));
+    }
 }

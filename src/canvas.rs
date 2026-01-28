@@ -1,22 +1,21 @@
 use egui::{LayerId, PointerButton, Rangef, Response, Sense, UiBuilder, emath::TSTransform};
 
-pub fn update_canvas(ui: &mut egui::Ui, transform: &mut TSTransform, allow_drag: bool) -> Response {
-    let mut resp = create_surface(ui, allow_drag);
+pub fn update_canvas(ui: &mut egui::Ui, transform: &mut TSTransform) -> Response {
+    let mut resp = create_surface(ui);
     update_transform(ui, transform, &mut resp);
     resp
 }
 
 /// Create a surface for canvas interactions (panning).
-fn create_surface(ui: &mut egui::Ui, allow_drag: bool) -> Response {
+fn create_surface(ui: &mut egui::Ui) -> Response {
     let scene_layer_id = LayerId::new(ui.layer_id().order, ui.id().with("scene_area"));
     ui.ctx().set_sublayer(ui.layer_id(), scene_layer_id);
-    let sense = if allow_drag {
-        Sense::click_and_drag()
-    } else {
-        Sense::click()
-    };
 
-    let mut local_ui = ui.new_child(UiBuilder::new().layer_id(scene_layer_id).sense(sense));
+    let mut local_ui = ui.new_child(
+        UiBuilder::new()
+            .layer_id(scene_layer_id)
+            .sense(Sense::click_and_drag()),
+    );
     local_ui.set_width(local_ui.available_width());
     local_ui.set_height(local_ui.available_height());
 

@@ -28,7 +28,7 @@ use crate::{
     inspect::Inspector,
     notifs::Notifications,
     objects::Object,
-    select::{Selection, SelectionContext, SelectionState},
+    select::{Selection, SelectionContext, SelectionState, handle_box_select},
     stack::{Stack, State},
     tools::{Tool, ToolContext, toolbar},
 };
@@ -171,10 +171,6 @@ impl App {
             self.tool = Tool::Moving;
         }
 
-        if ctx.input(|inp| inp.key_released(Key::S) && inp.modifiers.is_none()) {
-            self.tool = Tool::box_select();
-        }
-
         if ctx.input(|inp| inp.key_released(Key::T)) {
             self.tool = Tool::text();
         }
@@ -295,14 +291,16 @@ impl eframe::App for App {
 
         // For canvas interaction (zooming & panning).
         egui::CentralPanel::default().show(ctx, |ui| {
-            let allow_drag = self.tool.allow_dragging() && !self.selection.is_dragging();
-            let resp = canvas::update_canvas(ui, &mut self.transform, allow_drag);
+            let resp = canvas::update_canvas(ui, &mut self.transform);
+
+            handle_box_select(ctx, &rects, &mut self.selection);
 
             let surface_clicked = resp.clicked();
             let allow_select = self.tool.allow_selection();
             let interact_pos = ctx.input(|inp| inp.pointer.interact_pos());
             let pointer_down = resp.is_pointer_button_down_on();
 
+            // Manipulate the selection, e.g. moving it, scaling it, ...
             let sel_ctx = SelectionContext {
                 parent_transform: self.transform,
                 drag_delta: ctx.input(|inp| inp.pointer.delta()) / self.transform.scaling,
@@ -311,12 +309,13 @@ impl eframe::App for App {
                     .flatten(),
                 pressed_pos: pointer_down.then_some(interact_pos).flatten(),
                 hover_pos: ctx.input(|inp| inp.pointer.hover_pos()),
-                pointer_up: ctx.input(|inp| inp.pointer.primary_released()),
+                pointer_up: ctx.input(|inp| inp.pointer.any_released()),
                 append_selection: ctx.input(|inp| inp.modifiers.shift_only()),
                 rects: &rects,
             };
             is_dirty |= self.selection.update(ctx, sel_ctx, &mut self.objects);
 
+            // Handle current tool
             let tool_ctx = ToolContext {
                 root: &self.root,
                 parent_transform: self.transform,
@@ -327,6 +326,7 @@ impl eframe::App for App {
             is_dirty |= self.tool.update(ctx, tool_ctx, &mut self.objects);
         });
 
+        // Handle key inputs
         if !ctx.memory(|mem| mem.focused().is_some()) {
             self.handle_input(ctx);
         }
