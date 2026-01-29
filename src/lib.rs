@@ -25,7 +25,7 @@ use crate::{
     bookmarks::Bookmark,
     content::check_and_find_missing_files,
     images::TextureCache,
-    inspect::Inspector,
+    inspect::{Inspector, frame_rect},
     notifs::Notifications,
     objects::Object,
     select::{Selection, SelectionContext, SelectionState, handle_box_select},
@@ -222,6 +222,21 @@ impl App {
             }
         }
 
+        // Jump to/frame the current selection
+        if ctx.input(|inp| inp.key_released(Key::W)) && !self.selection.is_empty() {
+            let mut rect = Rect::NOTHING;
+            for r in self
+                .selection
+                .iter()
+                .filter_map(|id| self.objects.get(id))
+                .map(|obj| obj.world_rect())
+            {
+                rect |= r;
+            }
+            let screen_rect = ctx.content_rect();
+            self.transform = frame_rect(rect, screen_rect, 0.9);
+        }
+
         // Launch selected object, e.g. play video
         if ctx.input(|inp| inp.key_released(Key::L))
             && let Some(id) = self.selection.single()
@@ -365,7 +380,7 @@ impl eframe::App for App {
 }
 
 fn help(ctx: &Context, selection: &Selection) {
-    if selection.has_many() {
+    if !selection.is_empty() {
         egui::Area::new(egui::Id::new("help"))
             .order(Order::Middle)
             .anchor(Align2::LEFT_BOTTOM, Vec2::new(24., -24.))
@@ -378,8 +393,11 @@ fn help(ctx: &Context, selection: &Selection) {
                         ui.style_mut().override_font_id =
                             Some(FontId::new(11., FontFamily::Proportional));
                         ui.horizontal(|ui| {
-                            ui.label("b: Normalize sizes");
-                            ui.label("B: Binpack");
+                            if selection.has_many() {
+                                ui.label("b: Normalize sizes");
+                                ui.label("B: Binpack");
+                            }
+                            ui.label("w: Jump to/frame");
                         });
                     });
             });

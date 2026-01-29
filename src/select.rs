@@ -35,6 +35,10 @@ impl Selection {
         self.ids.clear();
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.ids.is_empty()
+    }
+
     pub fn has_many(&self) -> bool {
         self.ids.len() > 1
     }

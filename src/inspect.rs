@@ -111,18 +111,8 @@ impl Inspector {
                     .on_hover_text("Go to view")
                     .clicked()
                 {
-                    let padding = 0.1; // % of screen
                     let screen_rect = ui.ctx().content_rect();
-                    let scale_x = screen_rect.width() / rect.width();
-                    let scale_y = screen_rect.height() / rect.height();
-                    let zoom = scale_x.min(scale_y) * padding;
-
-                    let screen_center = screen_rect.center().to_vec2();
-                    let world_center = rect.center().to_vec2();
-                    *current_transform = TSTransform {
-                        scaling: zoom,
-                        translation: screen_center - (world_center * zoom),
-                    }
+                    *current_transform = frame_rect(*rect, screen_rect, 0.1);
                 }
 
                 egui::Frame::NONE
@@ -154,4 +144,24 @@ fn justified(
             right(ui);
         });
     });
+}
+
+/// Return a transform that jumps to/frames the specified rect.
+pub fn frame_rect(
+    rect: Rect,
+    screen_rect: Rect,
+
+    // % of screen to fill
+    screen_fill: f32,
+) -> TSTransform {
+    let scale_x = screen_rect.width() / rect.width();
+    let scale_y = screen_rect.height() / rect.height();
+    let zoom = scale_x.min(scale_y) * screen_fill;
+
+    let screen_center = screen_rect.center().to_vec2();
+    let world_center = rect.center().to_vec2();
+    TSTransform {
+        scaling: zoom,
+        translation: screen_center - (world_center * zoom),
+    }
 }
