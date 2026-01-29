@@ -162,9 +162,10 @@ impl App {
             self.objects = state.clone();
         }
 
-        // Reset tool to Moving
+        // Reset tool to Moving and clear selection
         if ctx.input(|inp| inp.key_released(Key::Escape)) {
             self.tool = Tool::Moving;
+            self.selection.clear();
         }
 
         if ctx.input(|inp| inp.key_released(Key::N)) {
