@@ -355,6 +355,8 @@ impl eframe::App for App {
             .objects
             .values()
             .filter_map(|obj| obj.text_content().map(|text| (text, obj.world_rect())))
+            // Only use single-line labels
+            .filter(|(text, _)| text.lines().count() == 1)
             .collect();
 
         self.inspector.render(
