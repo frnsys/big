@@ -239,7 +239,7 @@ impl SelectionState {
                         if let Some(obj) = objects.get_mut(i)
                             && let Some(width) = obj.width_mut()
                         {
-                            *width += sctx.drag_delta.x;
+                            *width += sctx.drag_delta.x * sctx.parent_transform.scaling;
                         }
                     }
                 }
