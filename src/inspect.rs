@@ -126,7 +126,14 @@ impl Inspector {
                     .corner_radius(2)
                     .show(ui, |ui| {
                         ui.set_width(ui.available_width());
-                        ui.colored_label(Color32::from_gray(224), *label);
+
+                        const MAX_LEN: usize = 24;
+                        if label.len() < MAX_LEN {
+                            ui.colored_label(Color32::from_gray(224), *label);
+                        } else {
+                            let label = format!("{}...", &label[0..MAX_LEN - 3]);
+                            ui.colored_label(Color32::from_gray(224), label);
+                        };
                     });
             });
         }
