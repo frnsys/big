@@ -116,6 +116,14 @@ impl Object {
             }
         }
     }
+
+    pub fn is_launchable(&self) -> bool {
+        if let ObjectKind::Image { source, .. } = &self.data {
+            is_video(source)
+        } else {
+            false
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -198,9 +206,9 @@ impl ObjectKind {
 }
 
 fn paint_label(painter: &Painter, label: &str, anchor: Pos2) {
-    const FONT: FontId = FontId::proportional(24.);
-    const COLOR: Color32 = Color32::from_gray(64);
-    const WIDTH: f32 = 128.;
+    const FONT: FontId = FontId::proportional(64.);
+    const COLOR: Color32 = Color32::from_gray(255);
+    const WIDTH: f32 = 256.;
 
     let galley = painter.layout(label.to_string(), FONT, COLOR, WIDTH);
     let size = galley.rect.size();

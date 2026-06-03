@@ -61,6 +61,10 @@ impl Tool {
         }
     }
 
+    pub fn is_editable(obj: &Object) -> bool {
+        matches!(obj.data, ObjectKind::Text { .. })
+    }
+
     pub fn text() -> Self {
         Tool::Typing {
             transform: None,

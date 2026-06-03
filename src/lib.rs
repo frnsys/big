@@ -374,7 +374,7 @@ impl eframe::App for App {
             (Align2::LEFT_TOP, Vec2::new(24.0, 24.0)),
         );
 
-        help(ctx, &self.selection);
+        help(ctx, &self.selection, &self.objects);
 
         if is_dirty && *self.stack.current() != self.objects {
             self.stack.push(self.objects.clone());
@@ -382,7 +382,7 @@ impl eframe::App for App {
     }
 }
 
-fn help(ctx: &Context, selection: &Selection) {
+fn help(ctx: &Context, selection: &Selection, objects: &State) {
     if !selection.is_empty() {
         egui::Area::new(egui::Id::new("help"))
             .order(Order::Middle)
@@ -401,6 +401,16 @@ fn help(ctx: &Context, selection: &Selection) {
                                 ui.label("B: Binpack");
                             }
                             ui.label("w: Jump to/frame");
+                            if let Some(id) = selection.single() {
+                                if let Some(obj) = objects.get(id) {
+                                    if obj.is_launchable() {
+                                        ui.label("l: Launch/play");
+                                    }
+                                    if Tool::is_editable(obj) {
+                                        ui.label("c: Edit");
+                                    }
+                                }
+                            }
                         });
                     });
             });
