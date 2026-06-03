@@ -21,9 +21,10 @@ pathdiff = "0.2.3"
 imagesize = "0.14.0"
 dirs = "6.0.0"
 binpack2d = "1.0.1"
+video-rs = { version = "0.11.0", features = ["ndarray"] }
 
 # use this version which supports ffmpeg 8
-video-rs = { git = "https://github.com/oddity-ai/video-rs", rev = "6caba4d08fc11e845bb29bd22594ca4b1c4e35db" }
+# video-rs = { git = "https://github.com/oddity-ai/video-rs", rev = "6caba4d08fc11e845bb29bd22594ca4b1c4e35db" }
 
 [profile.release]
 lto = "fat"

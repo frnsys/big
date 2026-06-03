@@ -337,12 +337,23 @@ fn to_color_image(img: DynamicImage) -> ColorImage {
 
 fn create_video_thumbnail(path: &Path, size: Option<u32>) -> ImageResult<DynamicImage> {
     let mut decoder = Decoder::new(path).map_err(std::io::Error::other)?;
+    let (_time, frame) = decoder.decode().map_err(std::io::Error::other)?;
 
     let (width, height) = decoder.size();
-    let frame = decoder.decode_raw().map_err(std::io::Error::other)?;
-    let buf = frame.data(0);
+    let mut rgb_inline_buffer = Vec::with_capacity((width * height * 3) as usize);
+    for pixel in frame.iter() {
+        rgb_inline_buffer.push(*pixel);
+    }
 
-    let img: RgbImage = ImageBuffer::from_raw(width, height, buf.to_vec()).unwrap();
+    let img: RgbImage = ImageBuffer::from_raw(width, height, rgb_inline_buffer)
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Failed to create image buffer",
+            )
+        })
+        .map_err(std::io::Error::other)?;
+
     let img = DynamicImage::ImageRgb8(img);
 
     if let Some(size) = size {
